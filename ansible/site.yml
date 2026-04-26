@@ -1,0 +1,8 @@
+- name: Provision and deploy the SimRig shaker app
+  hosts: all
+  become: true
+  gather_facts: true
+  roles:
+    - base
+    - python_runtime
+    - shaker_app

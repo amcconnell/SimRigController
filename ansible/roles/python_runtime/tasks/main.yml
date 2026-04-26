@@ -1,0 +1,43 @@
+- name: Check installed uv version
+  ansible.builtin.command: "{{ uv_install_dir }}/uv --version"
+  register: uv_check
+  changed_when: false
+  failed_when: false
+  check_mode: false  # read-only — always run, even in --check mode
+
+- name: Install uv {{ uv_version }}
+  when: uv_version not in (uv_check.stdout | default(''))
+  # Allow this block to run even under --check, so a fresh Pi can be
+  # provisioned end-to-end with `make ansible-check` if desired. The
+  # downloaded artefacts are idempotent across runs.
+  check_mode: false
+  block:
+    - name: Download uv tarball
+      ansible.builtin.get_url:
+        url: "https://github.com/astral-sh/uv/releases/download/{{ uv_version }}/uv-{{ uv_arch }}.tar.gz"
+        dest: "/tmp/uv-{{ uv_version }}.tar.gz"
+        mode: "0644"
+
+    - name: Extract uv tarball
+      ansible.builtin.unarchive:
+        src: "/tmp/uv-{{ uv_version }}.tar.gz"
+        dest: /tmp
+        remote_src: true
+        creates: "/tmp/uv-{{ uv_arch }}/uv"
+
+    - name: Install uv binaries to {{ uv_install_dir }}
+      ansible.builtin.copy:
+        src: "/tmp/uv-{{ uv_arch }}/{{ item }}"
+        dest: "{{ uv_install_dir }}/{{ item }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0755"
+      loop:
+        - uv
+        - uvx
+
+    - name: Remove downloaded tarball
+      ansible.builtin.file:
+        path: "/tmp/uv-{{ uv_version }}.tar.gz"
+        state: absent

@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>SimRig Shaker</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+  h1 { margin-bottom: 0.25rem; }
+  .sub { color: #666; margin-top: 0; }
+  fieldset { border: 1px solid #ccc; border-radius: 4px; padding: 0.75rem 1rem; margin: 1rem 0; }
+  legend { font-weight: 600; padding: 0 0.4rem; }
+  label { display: grid; grid-template-columns: 11rem 1fr; align-items: center; gap: 0.5rem; padding: 0.2rem 0; }
+  input { padding: 0.25rem 0.4rem; font: inherit; border: 1px solid #bbb; border-radius: 3px; }
+  button { padding: 0.5rem 1rem; font: inherit; cursor: pointer; }
+  .status { display: grid; grid-template-columns: 9rem 1fr; gap: 0.25rem 1rem; font-variant-numeric: tabular-nums; }
+  .pill { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.85em; }
+  .pill.connected { background: #cfe9d4; color: #1a5b2a; }
+  .pill.discovering, .pill.starting { background: #fde7c2; color: #8a4a00; }
+  .pill.stale { background: #f5c0c0; color: #7a1313; }
+  .msg { margin-top: 0.5rem; font-size: 0.9em; }
+  .msg.ok { color: #1a5b2a; }
+  .msg.err { color: #7a1313; }
+</style>
+</head>
+<body>
+<h1>SimRig Shaker</h1>
+<p class="sub">GT7 telemetry &rarr; bass shaker</p>
+
+<fieldset>
+  <legend>Status</legend>
+  <div class="status" id="status">
+    <div>State</div><div><span id="state" class="pill">…</span></div>
+    <div>PS5 IP</div><div id="ps5_ip">—</div>
+    <div>Packet rate</div><div id="rate">—</div>
+    <div>Total packets</div><div id="count">—</div>
+    <div>Last packet age</div><div id="age">—</div>
+    <div>Speed</div><div id="speed">—</div>
+    <div>RPM</div><div id="rpm">—</div>
+    <div>Throttle / Brake</div><div id="tb">—</div>
+    <div>Gear / Lap</div><div id="gl">—</div>
+  </div>
+</fieldset>
+
+<fieldset>
+  <legend>Test</legend>
+  <button type="button" id="test-vibration">Test road vibration (1 s)</button>
+  <button type="button" id="test-gear">Test gear shift</button>
+  <span id="test-msg" class="msg"></span>
+</fieldset>
+
+<form id="cfg-form">
+  <fieldset>
+    <legend>GT7</legend>
+    <label>PS5 IP override <input name="gt7.ps5_ip" type="text" placeholder="(autodiscover)" /></label>
+    <label>Heartbeat interval (s) <input name="gt7.heartbeat_interval_s" type="number" step="0.5" min="0.5" /></label>
+    <label>Discovery timeout (s) <input name="gt7.discovery_timeout_s" type="number" step="1" min="1" /></label>
+  </fieldset>
+  <fieldset>
+    <legend>Web</legend>
+    <label>Host <input name="web.host" type="text" /></label>
+    <label>Port <input name="web.port" type="number" min="1" max="65535" /></label>
+  </fieldset>
+  <fieldset>
+    <legend>Audio</legend>
+    <label>Device <input name="audio.device" type="text" /></label>
+    <label>Sample rate <input name="audio.sample_rate" type="number" min="8000" /></label>
+    <label>Buffer (ms) <input name="audio.buffer_ms" type="number" min="1" /></label>
+    <label>Master gain <input name="audio.master_gain" type="number" step="0.05" min="0" max="2" /></label>
+  </fieldset>
+  <fieldset>
+    <legend>Effect: road vibration</legend>
+    <label>Enabled <input name="audio.vibration_enabled" type="checkbox" /></label>
+    <label>Gain <input name="audio.vibration_gain" type="number" step="0.05" min="0" max="4" /></label>
+    <fieldset>
+      <legend>Response filter</legend>
+      <label>Input gain (%) <input name="audio.vibration_input_gain_pct" type="number" step="5" min="0" max="400" /></label>
+      <label>Threshold (%) <input name="audio.vibration_threshold_pct" type="number" step="1" min="0" max="100" /></label>
+      <label>Min force (%) <input name="audio.vibration_min_force_pct" type="number" step="1" min="0" max="100" /></label>
+      <label>Gamma <input name="audio.vibration_gamma" type="number" step="0.05" min="0.1" max="4" /></label>
+    </fieldset>
+  </fieldset>
+  <fieldset>
+    <legend>Effect: gear shift</legend>
+    <label>Enabled <input name="audio.gear_shift_enabled" type="checkbox" /></label>
+    <label>Gain <input name="audio.gear_shift_gain" type="number" step="0.05" min="0" max="4" /></label>
+    <label>Frequency (Hz) <input name="audio.gear_shift_freq_hz" type="number" step="1" min="10" max="200" /></label>
+    <label>Duration (ms) <input name="audio.gear_shift_duration_ms" type="number" step="5" min="10" max="500" /></label>
+    <label>RPM ramp start (%) <input name="audio.gear_shift_rpm_pct_low" type="number" step="1" min="0" max="100" /></label>
+    <label>RPM ramp end (%) <input name="audio.gear_shift_rpm_pct_high" type="number" step="1" min="0" max="100" /></label>
+    <label>Gain at low RPM (%) <input name="audio.gear_shift_min_gain_pct" type="number" step="1" min="0" max="200" /></label>
+    <label>Gain at high RPM (%) <input name="audio.gear_shift_max_gain_pct" type="number" step="1" min="0" max="200" /></label>
+  </fieldset>
+  <button type="submit">Save</button>
+  <span id="msg" class="msg"></span>
+</form>
+
+<script>
+const form = document.getElementById('cfg-form');
+const msg = document.getElementById('msg');
+
+async function loadConfig() {
+  const r = await fetch('/api/config');
+  const cfg = await r.json();
+  for (const section of Object.keys(cfg)) {
+    for (const key of Object.keys(cfg[section])) {
+      const input = form.elements[`${section}.${key}`];
+      if (!input) continue;
+      const v = cfg[section][key];
+      if (input.type === 'checkbox') {
+        input.checked = !!v;
+      } else {
+        input.value = v === null ? '' : v;
+      }
+    }
+  }
+}
+
+function fmt(n, digits=0) {
+  return (n === null || n === undefined) ? '—' : Number(n).toFixed(digits);
+}
+
+async function poll() {
+  try {
+    const r = await fetch('/api/status');
+    const s = await r.json();
+    const g = s.gt7, t = s.telemetry;
+
+    const stateEl = document.getElementById('state');
+    stateEl.textContent = g.state;
+    stateEl.className = 'pill ' + g.state;
+
+    document.getElementById('ps5_ip').textContent = g.ps5_ip || '—';
+    document.getElementById('rate').textContent = fmt(g.packets_per_sec, 0) + ' pkt/s';
+    document.getElementById('count').textContent = g.packet_count;
+    document.getElementById('age').textContent = g.last_packet_age_s !== null
+      ? fmt(g.last_packet_age_s, 2) + ' s' : '—';
+
+    if (t) {
+      document.getElementById('speed').textContent = fmt(t.speed_kph, 1) + ' kph';
+      document.getElementById('rpm').textContent = fmt(t.engine_rpm, 0);
+      document.getElementById('tb').textContent = `${t.throttle} / ${t.brake}`;
+      document.getElementById('gl').textContent = `${t.current_gear} / ${t.lap_count}`;
+    }
+  } catch (e) {
+    // ignore poll errors
+  }
+}
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  msg.textContent = '';
+  const updates = {};
+  for (const el of form.elements) {
+    if (!el.name) continue;
+    const [section, key] = el.name.split('.');
+    updates[section] = updates[section] || {};
+    let v;
+    if (el.type === 'checkbox') {
+      v = el.checked;
+    } else if (el.type === 'number') {
+      v = el.value === '' ? null : Number(el.value);
+    } else {
+      v = el.value;
+    }
+    if (key === 'ps5_ip' && v === '') v = null;
+    updates[section][key] = v;
+  }
+  const r = await fetch('/api/config', {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(updates),
+  });
+  if (r.ok) {
+    msg.className = 'msg ok';
+    msg.textContent = 'Saved.';
+  } else {
+    const err = await r.text();
+    msg.className = 'msg err';
+    msg.textContent = 'Error: ' + err;
+  }
+});
+
+async function fireTest(path, label) {
+  const tmsg = document.getElementById('test-msg');
+  tmsg.className = 'msg';
+  tmsg.textContent = '…';
+  try {
+    const r = await fetch(path, {method: 'POST'});
+    if (r.ok) {
+      tmsg.className = 'msg ok';
+      tmsg.textContent = label + ' triggered.';
+    } else {
+      tmsg.className = 'msg err';
+      tmsg.textContent = 'Error: ' + (await r.text());
+    }
+  } catch (e) {
+    tmsg.className = 'msg err';
+    tmsg.textContent = 'Error: ' + e;
+  }
+}
+document.getElementById('test-vibration').addEventListener('click',
+  () => fireTest('/api/test/vibration', 'Vibration'));
+document.getElementById('test-gear').addEventListener('click',
+  () => fireTest('/api/test/gear_shift', 'Gear shift'));
+
+loadConfig();
+setInterval(poll, 500);
+poll();
+</script>
+</body>
+</html>

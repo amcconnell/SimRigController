@@ -1,0 +1,8 @@
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart shaker service
+  ansible.builtin.systemd:
+    name: "{{ simrig_service_name }}.service"
+    state: restarted

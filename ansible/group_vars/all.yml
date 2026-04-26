@@ -1,0 +1,14 @@
+# Shared variables for all hosts.
+
+# Where on the Pi the app lives.
+# SSH login user is configured in inventory.yml as `simrig` (the admin account
+# you set in Pi Imager). The app runs as a separate, low-privilege system user
+# named `shaker` so the service can't be SSH'd into and the two roles don't
+# overlap.
+simrig_app_user: shaker
+simrig_app_group: shaker
+simrig_app_root: /opt/simrig/shaker
+
+# Path to the project root on the controller (your Mac), relative to the
+# ansible/ directory. Used when synchronising source to the Pi.
+simrig_local_app_dir: "{{ playbook_dir }}/../apps/shaker"

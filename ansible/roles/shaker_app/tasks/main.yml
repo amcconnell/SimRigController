@@ -1,0 +1,101 @@
+- name: Create app group
+  ansible.builtin.group:
+    name: "{{ simrig_app_group }}"
+    system: true
+    state: present
+  check_mode: false  # downstream tasks need the group to exist even in --check
+
+- name: Create app user
+  ansible.builtin.user:
+    name: "{{ simrig_app_user }}"
+    group: "{{ simrig_app_group }}"
+    groups: audio
+    append: true
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ simrig_app_root }}"
+    create_home: false
+    state: present
+  check_mode: false  # downstream `become_user` needs this user to exist even in --check
+
+- name: Ensure app root exists
+  # Owned by the SSH user so synchronize can rsync into it without sudo.
+  # Group is the app group so the shaker service user can read and create its
+  # .venv via the group-writable bit. Mode is 02775 (setgid) so new files
+  # inherit the shaker group automatically.
+  ansible.builtin.file:
+    path: "{{ simrig_app_root }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ simrig_app_group }}"
+    mode: "02775"
+
+- name: Ensure config dir exists
+  ansible.builtin.file:
+    path: "{{ simrig_app_root }}/config"
+    state: directory
+    owner: "{{ simrig_app_user }}"
+    group: "{{ simrig_app_group }}"
+    mode: "0755"
+
+- name: Lay down initial shaker.toml (only if missing)
+  ansible.builtin.template:
+    src: shaker.toml.j2
+    dest: "{{ simrig_app_root }}/config/shaker.toml"
+    owner: "{{ simrig_app_user }}"
+    group: "{{ simrig_app_group }}"
+    mode: "0644"
+    force: false
+  notify: Restart shaker service
+
+- name: Sync application source
+  # Runs as the SSH user (no become) since /opt/simrig/shaker is group-writable
+  # for the app group. config/ is excluded — it's managed by the template task
+  # above so the shaker user owns it and the web UI can write to it.
+  ansible.posix.synchronize:
+    src: "{{ simrig_local_app_dir }}/"
+    dest: "{{ simrig_app_root }}/"
+    delete: false
+    recursive: true
+    rsync_opts:
+      # Don't propagate the Mac source's directory perms (0755) onto the Pi —
+      # the app root needs to keep its 02775 (setgid + group-writable) mode so
+      # the shaker user can create .venv / .cache there.
+      - "--no-perms"
+      - "--exclude=.venv"
+      - "--exclude=__pycache__"
+      - "--exclude=*.pyc"
+      - "--exclude=.pytest_cache"
+      - "--exclude=.ruff_cache"
+      - "--exclude=config/"
+  become: false
+  notify: Restart shaker service
+
+- name: Install / update Python dependencies via uv sync
+  ansible.builtin.command: /usr/local/bin/uv sync --frozen
+  args:
+    chdir: "{{ simrig_app_root }}"
+  become_user: "{{ simrig_app_user }}"
+  register: uv_sync
+  changed_when: "'No changes' not in (uv_sync.stderr | default('')) and 'Audited' not in (uv_sync.stderr | default(''))"
+  notify: Restart shaker service
+  when: not ansible_check_mode
+
+- name: Install systemd unit
+  ansible.builtin.template:
+    src: shaker.service.j2
+    dest: "/etc/systemd/system/{{ simrig_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd daemon
+    - Restart shaker service
+
+- name: Enable and start shaker service
+  ansible.builtin.systemd:
+    name: "{{ simrig_service_name }}.service"
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: not ansible_check_mode

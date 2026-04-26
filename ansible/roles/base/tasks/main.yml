@@ -1,0 +1,28 @@
+- name: Set timezone
+  community.general.timezone:
+    name: "{{ simrig_timezone | default('Etc/UTC') }}"
+  when: simrig_timezone is defined
+
+- name: Refresh apt cache (daily)
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 86400
+
+- name: Install base system packages
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - rsync
+      - tar
+      - alsa-utils
+      - libportaudio2
+    state: present
+
+- name: Ensure parent app directory exists
+  ansible.builtin.file:
+    path: /opt/simrig
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"

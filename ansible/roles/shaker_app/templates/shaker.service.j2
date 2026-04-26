@@ -1,0 +1,21 @@
+[Unit]
+Description=SimRig bass shaker driver
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ simrig_app_user }}
+Group={{ simrig_app_group }}
+SupplementaryGroups=audio
+WorkingDirectory={{ simrig_app_root }}
+ExecStart={{ simrig_app_root }}/.venv/bin/python -m shaker
+Restart=always
+RestartSec=2
+Nice=-5
+# Allow the unprivileged shaker user to bind low ports (e.g. 80 for the web UI).
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target

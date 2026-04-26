@@ -1,0 +1,30 @@
+# Initial config laid down on first deploy. Subsequent deploys leave this file
+# alone — edits made via the web UI persist across re-deploys.
+[gt7]
+ps5_ip = ""
+heartbeat_interval_s = 5.0
+discovery_timeout_s = 30.0
+
+[web]
+host = "{{ simrig_default_web_host }}"
+port = {{ simrig_default_web_port }}
+
+[audio]
+device = "default"
+sample_rate = 48000
+buffer_ms = 20
+master_gain = 0.6
+vibration_enabled = true
+vibration_gain = 1.0
+vibration_input_gain_pct = 100.0
+vibration_threshold_pct = 0.0
+vibration_min_force_pct = 0.0
+vibration_gamma = 1.0
+gear_shift_enabled = true
+gear_shift_gain = 1.0
+gear_shift_freq_hz = 44.0
+gear_shift_duration_ms = 80
+gear_shift_rpm_pct_low = 50.0
+gear_shift_rpm_pct_high = 90.0
+gear_shift_min_gain_pct = 50.0
+gear_shift_max_gain_pct = 100.0

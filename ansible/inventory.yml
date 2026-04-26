@@ -1,0 +1,11 @@
+# Inventory for the SimRig controller Pi.
+#
+# `ansible_user` should match the username you set in Raspberry Pi Imager
+# when flashing the SD card. Edit this if you used something other than
+# `simrig`. Public-key SSH must be set up — `ssh simrig@simrig-pi.local`
+# should already work non-interactively.
+all:
+  hosts:
+    simrig-pi:
+      ansible_host: simrig-pi.local
+      ansible_user: simrig

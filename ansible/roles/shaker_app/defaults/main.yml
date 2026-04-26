@@ -1,0 +1,4 @@
+simrig_service_name: shaker
+# Web bind on the Pi defaults to 0.0.0.0 so the UI is reachable from the LAN.
+simrig_default_web_host: "0.0.0.0"
+simrig_default_web_port: 80
