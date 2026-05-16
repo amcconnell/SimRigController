@@ -8,7 +8,7 @@ import logging
 import numpy as np
 
 from shaker.audio.bus import AudioBus
-from shaker.audio.effects import GearShift, RoadVibration, gear_shift_rpm_factor
+from shaker.audio.effects import EngineRumble, GearShift, RoadVibration, gear_shift_rpm_factor
 
 log = logging.getLogger(__name__)
 
@@ -24,6 +24,7 @@ class AudioOutput:
         self._device = cfg.device if cfg.device != "default" else None
         self._vibration = RoadVibration(self._sample_rate)
         self._gear_shift = GearShift(self._sample_rate)
+        self._engine = EngineRumble(self._sample_rate)
         self._stop = asyncio.Event()
         self._stream = None  # type: ignore[assignment]
 
@@ -106,6 +107,9 @@ class AudioOutput:
             cfg.vibration_threshold_pct / 100.0,
             cfg.vibration_min_force_pct / 100.0,
             cfg.vibration_gamma,
+            self._bus.features.speed_mps,
+            cfg.vibration_speed_blend_low_mps,
+            cfg.vibration_speed_blend_high_mps,
         )
         gear = self._gear_shift.process(
             frames,
@@ -115,8 +119,17 @@ class AudioOutput:
             cfg.gear_shift_freq_hz,
             cfg.gear_shift_duration_ms / 1000.0,
         )
+        engine_rpm, throttle = self._bus.current_engine_state()
+        engine = self._engine.process(
+            frames,
+            engine_rpm,
+            throttle,
+            cfg.engine_rumble_gain,
+            cfg.engine_rumble_enabled,
+            cfg.engine_rumble_rpm_divisor,
+        )
 
-        mix = vib + gear
+        mix = vib + gear + engine
         np.multiply(mix, cfg.master_gain, out=mix)
         np.clip(mix, -1.0, 1.0, out=mix)
         outdata[:, 0] = mix

@@ -37,6 +37,15 @@ class AudioConfig:
     vibration_threshold_pct: float = 0.0
     vibration_min_force_pct: float = 0.0
     vibration_gamma: float = 1.0
+    # Speed-driven blend into a higher noise band — preserves the low-band feel
+    # at low speed and adds higher-frequency content at pace.
+    vibration_speed_blend_low_mps: float = 20.0
+    vibration_speed_blend_high_mps: float = 50.0
+    # Engine rumble: continuous sine derived from RPM, amplitude from throttle.
+    # rpm_divisor maps RPM to Hz (e.g., 60 → 100 Hz at 6000 RPM).
+    engine_rumble_enabled: bool = True
+    engine_rumble_gain: float = 1.0
+    engine_rumble_rpm_divisor: float = 60.0
     gear_shift_enabled: bool = True
     gear_shift_gain: float = 1.0
     gear_shift_freq_hz: float = 44.0

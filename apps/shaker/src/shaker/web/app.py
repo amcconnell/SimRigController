@@ -60,6 +60,11 @@ def create_app(
         bus.trigger_test_gear_shift()
         return {"ok": True}
 
+    @app.post("/api/test/engine_sweep")
+    def test_engine_sweep() -> dict[str, Any]:
+        bus.trigger_test_engine_sweep(duration_s=3.0, peak_rpm=7000.0)
+        return {"ok": True, "duration_s": 3.0, "peak_rpm": 7000.0}
+
     @app.get("/")
     def index() -> FileResponse:
         return FileResponse(_STATIC_DIR / "index.html")

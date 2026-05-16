@@ -5,6 +5,7 @@ import pytest
 
 from shaker.audio.bus import AudioBus
 from shaker.audio.effects import (
+    EngineRumble,
     GearShift,
     RoadVibration,
     apply_response_filter,
@@ -12,6 +13,14 @@ from shaker.audio.effects import (
 )
 from shaker.config import AudioConfig
 from shaker.gt7.protocol import TelemetryPacket
+
+
+def _active_packet() -> TelemetryPacket:
+    """A packet that passes the bus's "is driving" filter."""
+    p = TelemetryPacket()
+    p.flags = 0b01  # on_track bit set, not paused
+    p.lap_count = 1
+    return p
 
 
 def test_vibration_silent_when_activity_zero() -> None:
@@ -26,6 +35,20 @@ def test_vibration_produces_audio_when_activity_present() -> None:
     for _ in range(20):
         out = v.process(480, activity=0.01, gain=1.0, enabled=True)
     assert np.max(np.abs(out)) > 0.01
+
+
+def test_vibration_high_band_adds_energy_at_speed() -> None:
+    """High-speed playback should sum more amplitude than low-speed at the same activity."""
+    v_slow = RoadVibration(48000)
+    v_fast = RoadVibration(48000)
+    # Warm up the smoothers identically with activity but different speeds.
+    for _ in range(40):
+        slow = v_slow.process(480, activity=0.01, gain=1.0, enabled=True,
+                              speed_mps=0.0, speed_blend_low_mps=20.0, speed_blend_high_mps=50.0)
+        fast = v_fast.process(480, activity=0.01, gain=1.0, enabled=True,
+                              speed_mps=80.0, speed_blend_low_mps=20.0, speed_blend_high_mps=50.0)
+    # The fast variant gets the high band fully blended in, so RMS should be higher.
+    assert float(np.sqrt(np.mean(fast ** 2))) > float(np.sqrt(np.mean(slow ** 2)))
 
 
 def test_vibration_disabled_yields_silence() -> None:
@@ -47,9 +70,60 @@ def test_gear_shift_triggers_on_count_advance() -> None:
     assert np.max(np.abs(out)) > 0.1
 
 
+def test_engine_rumble_silent_at_zero_throttle() -> None:
+    e = EngineRumble(48000)
+    # Drive a few callbacks so any startup transient settles.
+    for _ in range(10):
+        out = e.process(480, engine_rpm=3000.0, throttle=0, gain=1.0, enabled=True, rpm_divisor=60.0)
+    assert np.max(np.abs(out)) < 1e-6
+
+
+def test_engine_rumble_silent_below_min_rpm() -> None:
+    e = EngineRumble(48000)
+    out = e.process(480, engine_rpm=50.0, throttle=200, gain=1.0, enabled=True, rpm_divisor=60.0)
+    assert np.max(np.abs(out)) == 0.0
+
+
+def test_engine_rumble_silent_when_disabled() -> None:
+    e = EngineRumble(48000)
+    out = e.process(480, engine_rpm=3000.0, throttle=200, gain=1.0, enabled=False, rpm_divisor=60.0)
+    assert np.max(np.abs(out)) == 0.0
+
+
+def test_engine_rumble_produces_audio_at_throttle() -> None:
+    e = EngineRumble(48000)
+    for _ in range(20):  # let the smoother build up
+        out = e.process(480, engine_rpm=3000.0, throttle=200, gain=1.0, enabled=True, rpm_divisor=60.0)
+    assert np.max(np.abs(out)) > 0.1
+
+
+def test_audio_bus_engine_sweep_returns_synthetic() -> None:
+    bus = AudioBus(AudioConfig())
+    bus.trigger_test_engine_sweep(duration_s=0.3, peak_rpm=6000.0)
+    # Just after trigger: near start (envelope ≈ 0, but >0 within first frame).
+    rpm0, t0 = bus.current_engine_state()
+    assert 0.0 <= rpm0 <= 6000.0
+    assert 0 <= t0 <= 255
+    # After the duration: back to features.
+    time.sleep(0.4)
+    rpm1, t1 = bus.current_engine_state()
+    assert rpm1 == bus.features.engine_rpm
+    assert t1 == bus.features.throttle
+
+
+def test_audio_bus_engine_sweep_peaks_at_midpoint() -> None:
+    bus = AudioBus(AudioConfig())
+    bus.trigger_test_engine_sweep(duration_s=0.2, peak_rpm=6000.0)
+    time.sleep(0.1)  # halfway through
+    rpm, throttle = bus.current_engine_state()
+    # Triangular envelope peaks at 1.0 at the midpoint.
+    assert rpm > 5000.0
+    assert throttle > 200
+
+
 def test_audio_bus_detects_upshift_and_downshift() -> None:
     bus = AudioBus(AudioConfig())
-    p = TelemetryPacket()
+    p = _active_packet()
     p.current_gear = 1
     bus.push_packet(p)
     assert bus.gear_shift_count == 0
@@ -66,7 +140,7 @@ def test_audio_bus_detects_upshift_and_downshift() -> None:
 
 def test_audio_bus_ignores_neutral_transitions() -> None:
     bus = AudioBus(AudioConfig())
-    p = TelemetryPacket()
+    p = _active_packet()
     p.current_gear = 3
     bus.push_packet(p)
     p.current_gear = 0  # to neutral — ignore
@@ -78,7 +152,7 @@ def test_audio_bus_ignores_neutral_transitions() -> None:
 
 def test_audio_bus_detects_reverse_engagement() -> None:
     bus = AudioBus(AudioConfig())
-    p = TelemetryPacket()
+    p = _active_packet()
     p.current_gear = 1
     bus.push_packet(p)
     p.current_gear = 15  # forward -> reverse
@@ -91,7 +165,7 @@ def test_audio_bus_detects_reverse_engagement() -> None:
 
 def test_audio_bus_suspension_activity_responds_to_bumps() -> None:
     bus = AudioBus(AudioConfig())
-    p = TelemetryPacket()
+    p = _active_packet()
     for _ in range(10):
         p.suspension_FL = p.suspension_FR = p.suspension_RL = p.suspension_RR = 0.05
         bus.push_packet(p)
@@ -100,6 +174,32 @@ def test_audio_bus_suspension_activity_responds_to_bumps() -> None:
     p.suspension_FR = 0.18
     bus.push_packet(p)
     assert bus.features.suspension_activity > settled
+
+
+def test_audio_bus_hpf_rejects_constant_load() -> None:
+    """Sustained equal load on all four corners (e.g., parked) should not generate vibration."""
+    bus = AudioBus(AudioConfig())
+    p = _active_packet()
+    for _ in range(60):  # ~1 second of constant input
+        p.suspension_FL = p.suspension_FR = p.suspension_RL = p.suspension_RR = 0.1
+        bus.push_packet(p)
+    # Should settle to ~zero (HPF blocks DC, envelope decays).
+    assert bus.features.suspension_activity < 1e-3
+
+
+def test_audio_bus_hpf_isolates_single_corner_hit() -> None:
+    """A single-wheel kerb strike should produce activity even when other corners are quiet."""
+    bus = AudioBus(AudioConfig())
+    p = _active_packet()
+    for _ in range(60):
+        p.suspension_FL = p.suspension_FR = p.suspension_RL = p.suspension_RR = 0.05
+        bus.push_packet(p)
+    assert bus.features.suspension_activity < 1e-3  # settled
+
+    # Only FL hits a kerb.
+    p.suspension_FL = 0.30
+    bus.push_packet(p)
+    assert bus.features.suspension_activity > 0.05
 
 
 def test_test_vibration_burst_overrides_idle_activity() -> None:
@@ -149,7 +249,7 @@ def test_gear_rpm_factor_honors_custom_anchors() -> None:
 
 def test_audio_bus_computes_rpm_percentage_from_max_alert() -> None:
     bus = AudioBus(AudioConfig())
-    p = TelemetryPacket()
+    p = _active_packet()
     p.max_alert_rpm = 8000
     p.engine_rpm = 4000.0
     bus.push_packet(p)
@@ -161,7 +261,7 @@ def test_audio_bus_computes_rpm_percentage_from_max_alert() -> None:
 
 def test_audio_bus_rpm_percentage_zero_when_max_unknown() -> None:
     bus = AudioBus(AudioConfig())
-    p = TelemetryPacket()
+    p = _active_packet()
     p.max_alert_rpm = 0
     p.engine_rpm = 5000.0
     bus.push_packet(p)
@@ -217,8 +317,7 @@ def test_response_filter_threshold_at_or_above_one_silences() -> None:
 def test_audio_bus_ignores_packet_with_negative_lap_count() -> None:
     bus = AudioBus(AudioConfig())
     # Build up some state from a real packet first.
-    p = TelemetryPacket()
-    p.lap_count = 1
+    p = _active_packet()
     p.engine_rpm = 5000.0
     p.max_alert_rpm = 9000
     p.suspension_FL = 0.05
@@ -238,8 +337,7 @@ def test_audio_bus_ignores_packet_with_negative_lap_count() -> None:
 
 def test_audio_bus_negative_lap_resets_gear_tracker() -> None:
     bus = AudioBus(AudioConfig())
-    p = TelemetryPacket()
-    p.lap_count = 1
+    p = _active_packet()
     p.current_gear = 3
     bus.push_packet(p)
 
@@ -251,8 +349,37 @@ def test_audio_bus_negative_lap_resets_gear_tracker() -> None:
 
     # Resume in 1st gear: should NOT fire a shift just because last active
     # state was 3rd gear, because the tracker was cleared.
-    resume = TelemetryPacket()
-    resume.lap_count = 1
+    resume = _active_packet()
     resume.current_gear = 1
     bus.push_packet(resume)
     assert bus.gear_shift_count == 0
+
+
+def test_audio_bus_ignores_paused_packet() -> None:
+    bus = AudioBus(AudioConfig())
+    p = _active_packet()
+    p.engine_rpm = 4000.0
+    p.max_alert_rpm = 8000
+    bus.push_packet(p)
+    assert bus.features.engine_rpm == 4000.0
+
+    paused = _active_packet()
+    paused.flags = 0b11  # on_track + paused
+    paused.engine_rpm = 4000.0
+    bus.push_packet(paused)
+    assert bus.features.engine_rpm == 0.0  # reset
+
+
+def test_audio_bus_ignores_off_track_packet() -> None:
+    bus = AudioBus(AudioConfig())
+    p = _active_packet()
+    p.engine_rpm = 4000.0
+    p.max_alert_rpm = 8000
+    bus.push_packet(p)
+    assert bus.features.engine_rpm == 4000.0
+
+    off = _active_packet()
+    off.flags = 0b00  # off track — between sessions
+    off.engine_rpm = 4000.0
+    bus.push_packet(off)
+    assert bus.features.engine_rpm == 0.0  # reset
