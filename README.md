@@ -157,4 +157,4 @@ The GT7 telemetry protocol (UDP port, Salsa20 key, packet layout) is community r
 
 ## License
 
-No license declared. If you'd like to use this, open an issue.
+MIT — see [LICENSE](LICENSE).
