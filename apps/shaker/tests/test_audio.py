@@ -5,9 +5,12 @@ import pytest
 
 from shaker.audio.bus import AudioBus
 from shaker.audio.effects import (
+    BrakeRumble,
     EngineRumble,
     GearShift,
+    RevLimiter,
     RoadVibration,
+    WheelSlip,
     apply_response_filter,
     gear_shift_rpm_factor,
 )
@@ -119,6 +122,106 @@ def test_audio_bus_engine_sweep_peaks_at_midpoint() -> None:
     # Triangular envelope peaks at 1.0 at the midpoint.
     assert rpm > 5000.0
     assert throttle > 200
+
+
+# --- Brake / rev limiter / wheel slip effects --------------------------------
+
+
+def test_brake_rumble_silent_below_threshold() -> None:
+    b = BrakeRumble(48000)
+    for _ in range(10):
+        out = b.process(480, brake=30, gain=1.0, enabled=True, freq_hz=30.0, threshold_pct=20.0)
+    assert np.max(np.abs(out)) < 1e-6
+
+
+def test_brake_rumble_produces_audio_above_threshold() -> None:
+    b = BrakeRumble(48000)
+    for _ in range(30):
+        out = b.process(480, brake=200, gain=1.0, enabled=True, freq_hz=30.0, threshold_pct=20.0)
+    assert np.max(np.abs(out)) > 0.1
+
+
+def test_brake_rumble_silent_when_disabled() -> None:
+    b = BrakeRumble(48000)
+    out = b.process(480, brake=255, gain=1.0, enabled=False, freq_hz=30.0, threshold_pct=20.0)
+    assert np.max(np.abs(out)) == 0.0
+
+
+def test_rev_limiter_silent_below_trigger() -> None:
+    r = RevLimiter(48000)
+    for _ in range(10):
+        out = r.process(480, rpm_pct=0.8, gain=1.0, enabled=True, freq_hz=75.0, trigger_pct=95.0)
+    assert np.max(np.abs(out)) < 1e-6
+
+
+def test_rev_limiter_produces_audio_above_trigger() -> None:
+    r = RevLimiter(48000)
+    for _ in range(30):
+        out = r.process(480, rpm_pct=0.99, gain=1.0, enabled=True, freq_hz=75.0, trigger_pct=95.0)
+    assert np.max(np.abs(out)) > 0.1
+
+
+def test_wheel_slip_silent_below_threshold() -> None:
+    s = WheelSlip(48000)
+    for _ in range(10):
+        out = s.process(480, slip_magnitude=1.0, gain=1.0, enabled=True,
+                        freq_hz=90.0, threshold_mps=2.0, scale_mps=5.0)
+    assert np.max(np.abs(out)) < 1e-6
+
+
+def test_wheel_slip_produces_audio_above_threshold() -> None:
+    s = WheelSlip(48000)
+    for _ in range(30):
+        out = s.process(480, slip_magnitude=6.0, gain=1.0, enabled=True,
+                        freq_hz=90.0, threshold_mps=2.0, scale_mps=5.0)
+    assert np.max(np.abs(out)) > 0.1
+
+
+def test_audio_bus_computes_slip_magnitude() -> None:
+    bus = AudioBus(AudioConfig())
+    p = _active_packet()
+    p.speed_mps = 30.0
+    # Three corners match speed (radius 0.3 m × rps 100 = 30 m/s); FL is spinning.
+    p.tire_radius_FL = p.tire_radius_FR = p.tire_radius_RL = p.tire_radius_RR = 0.3
+    p.wheel_rps_FR = p.wheel_rps_RL = p.wheel_rps_RR = 100.0
+    p.wheel_rps_FL = 130.0  # 39 m/s wheel-surface speed
+    bus.push_packet(p)
+    assert bus.features.slip_magnitude == pytest.approx(9.0, abs=1e-3)
+
+
+def test_audio_bus_captures_brake_input() -> None:
+    bus = AudioBus(AudioConfig())
+    p = _active_packet()
+    p.brake = 180
+    bus.push_packet(p)
+    assert bus.features.brake == 180
+
+
+def test_audio_bus_brake_test_override_peaks_at_midpoint() -> None:
+    bus = AudioBus(AudioConfig())
+    bus.trigger_test_brake_rumble(duration_s=0.2, peak_brake=200)
+    time.sleep(0.1)
+    assert bus.current_brake() > 150
+    time.sleep(0.2)
+    assert bus.current_brake() == bus.features.brake
+
+
+def test_audio_bus_rev_limiter_test_override_crosses_redline() -> None:
+    bus = AudioBus(AudioConfig())
+    bus.trigger_test_rev_limiter(duration_s=0.2)
+    time.sleep(0.1)
+    assert bus.current_rpm_pct() > 0.9
+    time.sleep(0.2)
+    assert bus.current_rpm_pct() == bus.features.engine_rpm_pct
+
+
+def test_audio_bus_slip_test_override_peaks_at_midpoint() -> None:
+    bus = AudioBus(AudioConfig())
+    bus.trigger_test_wheel_slip(duration_s=0.2, peak_slip_mps=8.0)
+    time.sleep(0.1)
+    assert bus.current_slip_magnitude() > 6.0
+    time.sleep(0.2)
+    assert bus.current_slip_magnitude() == bus.features.slip_magnitude
 
 
 def test_audio_bus_detects_upshift_and_downshift() -> None:

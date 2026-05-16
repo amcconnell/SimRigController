@@ -65,6 +65,21 @@ def create_app(
         bus.trigger_test_engine_sweep(duration_s=3.0, peak_rpm=7000.0)
         return {"ok": True, "duration_s": 3.0, "peak_rpm": 7000.0}
 
+    @app.post("/api/test/brake_rumble")
+    def test_brake_rumble() -> dict[str, Any]:
+        bus.trigger_test_brake_rumble(duration_s=2.0, peak_brake=220)
+        return {"ok": True, "duration_s": 2.0}
+
+    @app.post("/api/test/rev_limiter")
+    def test_rev_limiter() -> dict[str, Any]:
+        bus.trigger_test_rev_limiter(duration_s=2.0)
+        return {"ok": True, "duration_s": 2.0}
+
+    @app.post("/api/test/wheel_slip")
+    def test_wheel_slip() -> dict[str, Any]:
+        bus.trigger_test_wheel_slip(duration_s=2.0, peak_slip_mps=7.0)
+        return {"ok": True, "duration_s": 2.0}
+
     @app.get("/")
     def index() -> FileResponse:
         return FileResponse(_STATIC_DIR / "index.html")

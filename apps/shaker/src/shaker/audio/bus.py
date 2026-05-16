@@ -58,6 +58,10 @@ class TelemetryFeatures:
     engine_rpm: float = 0.0
     engine_rpm_pct: float = 0.0  # 0..1 relative to the car's max_alert_rpm
     throttle: int = 0  # 0..255
+    brake: int = 0  # 0..255
+    # Worst-case wheel-vs-vehicle speed mismatch in m/s, across the four corners.
+    # Spikes during wheelspin (under acceleration) or lockup (under braking).
+    slip_magnitude: float = 0.0
     lap_count: int = 0
 
 
@@ -87,6 +91,20 @@ class AudioBus:
         self._test_engine_start: float = 0.0
         self._test_engine_duration: float = 0.0
         self._test_engine_peak_rpm: float = 0.0
+
+        # Test overrides for brake, rev limiter, wheel slip. Each is a
+        # triangular ramp (0 → peak → 0) over duration. While active, the
+        # corresponding accessor returns the synthetic value.
+        self._test_brake_start: float = 0.0
+        self._test_brake_duration: float = 0.0
+        self._test_brake_peak: int = 0
+
+        self._test_rev_limiter_start: float = 0.0
+        self._test_rev_limiter_duration: float = 0.0
+
+        self._test_slip_start: float = 0.0
+        self._test_slip_duration: float = 0.0
+        self._test_slip_peak_mps: float = 0.0
 
     def update_audio_config(self, cfg: AudioConfig) -> None:
         self.audio_config = cfg
@@ -119,6 +137,48 @@ class AudioBus:
             envelope = 1.0 - abs(2.0 * progress - 1.0)
             return (self._test_engine_peak_rpm * envelope, int(255 * envelope))
         return (self.features.engine_rpm, self.features.throttle)
+
+    def trigger_test_brake_rumble(
+        self, duration_s: float = 2.0, peak_brake: int = 220
+    ) -> None:
+        self._test_brake_start = time.monotonic()
+        self._test_brake_duration = duration_s
+        self._test_brake_peak = peak_brake
+
+    def current_brake(self) -> int:
+        elapsed = time.monotonic() - self._test_brake_start
+        if 0.0 <= elapsed < self._test_brake_duration:
+            progress = elapsed / self._test_brake_duration
+            envelope = 1.0 - abs(2.0 * progress - 1.0)
+            return int(self._test_brake_peak * envelope)
+        return self.features.brake
+
+    def trigger_test_rev_limiter(self, duration_s: float = 2.0) -> None:
+        self._test_rev_limiter_start = time.monotonic()
+        self._test_rev_limiter_duration = duration_s
+
+    def current_rpm_pct(self) -> float:
+        elapsed = time.monotonic() - self._test_rev_limiter_start
+        if 0.0 <= elapsed < self._test_rev_limiter_duration:
+            progress = elapsed / self._test_rev_limiter_duration
+            # Triangular ramp 0 → 1 → 0 carries rpm_pct past any reasonable trigger.
+            return 1.0 - abs(2.0 * progress - 1.0)
+        return self.features.engine_rpm_pct
+
+    def trigger_test_wheel_slip(
+        self, duration_s: float = 2.0, peak_slip_mps: float = 7.0
+    ) -> None:
+        self._test_slip_start = time.monotonic()
+        self._test_slip_duration = duration_s
+        self._test_slip_peak_mps = peak_slip_mps
+
+    def current_slip_magnitude(self) -> float:
+        elapsed = time.monotonic() - self._test_slip_start
+        if 0.0 <= elapsed < self._test_slip_duration:
+            progress = elapsed / self._test_slip_duration
+            envelope = 1.0 - abs(2.0 * progress - 1.0)
+            return self._test_slip_peak_mps * envelope
+        return self.features.slip_magnitude
 
     def push_packet(self, p: TelemetryPacket) -> None:
         """Update derived features and shift events from a new packet.
@@ -154,6 +214,15 @@ class AudioBus:
         if p.max_alert_rpm > 0:
             rpm_pct = max(0.0, min(1.0, p.engine_rpm / p.max_alert_rpm))
 
+        # Per-corner slip = wheel rim speed (rps × radius) − vehicle speed.
+        # Take the max absolute across corners as the headline magnitude.
+        slip_magnitude = max(
+            abs(p.wheel_rps_FL * p.tire_radius_FL - p.speed_mps),
+            abs(p.wheel_rps_FR * p.tire_radius_FR - p.speed_mps),
+            abs(p.wheel_rps_RL * p.tire_radius_RL - p.speed_mps),
+            abs(p.wheel_rps_RR * p.tire_radius_RR - p.speed_mps),
+        )
+
         # Replace the dataclass atomically (single ref assignment).
         self.features = TelemetryFeatures(
             speed_mps=p.speed_mps,
@@ -161,6 +230,8 @@ class AudioBus:
             engine_rpm=p.engine_rpm,
             engine_rpm_pct=rpm_pct,
             throttle=p.throttle,
+            brake=p.brake,
+            slip_magnitude=slip_magnitude,
             lap_count=p.lap_count,
         )
 

@@ -8,7 +8,15 @@ import logging
 import numpy as np
 
 from shaker.audio.bus import AudioBus
-from shaker.audio.effects import EngineRumble, GearShift, RoadVibration, gear_shift_rpm_factor
+from shaker.audio.effects import (
+    BrakeRumble,
+    EngineRumble,
+    GearShift,
+    RevLimiter,
+    RoadVibration,
+    WheelSlip,
+    gear_shift_rpm_factor,
+)
 
 log = logging.getLogger(__name__)
 
@@ -25,6 +33,9 @@ class AudioOutput:
         self._vibration = RoadVibration(self._sample_rate)
         self._gear_shift = GearShift(self._sample_rate)
         self._engine = EngineRumble(self._sample_rate)
+        self._brake = BrakeRumble(self._sample_rate)
+        self._rev_limiter = RevLimiter(self._sample_rate)
+        self._slip = WheelSlip(self._sample_rate)
         self._stop = asyncio.Event()
         self._stream = None  # type: ignore[assignment]
 
@@ -128,8 +139,33 @@ class AudioOutput:
             cfg.engine_rumble_enabled,
             cfg.engine_rumble_rpm_divisor,
         )
+        brake = self._brake.process(
+            frames,
+            self._bus.current_brake(),
+            cfg.brake_rumble_gain,
+            cfg.brake_rumble_enabled,
+            cfg.brake_rumble_freq_hz,
+            cfg.brake_rumble_threshold_pct,
+        )
+        rev_limit = self._rev_limiter.process(
+            frames,
+            self._bus.current_rpm_pct(),
+            cfg.rev_limiter_gain,
+            cfg.rev_limiter_enabled,
+            cfg.rev_limiter_freq_hz,
+            cfg.rev_limiter_trigger_pct,
+        )
+        slip = self._slip.process(
+            frames,
+            self._bus.current_slip_magnitude(),
+            cfg.wheel_slip_gain,
+            cfg.wheel_slip_enabled,
+            cfg.wheel_slip_freq_hz,
+            cfg.wheel_slip_threshold_mps,
+            cfg.wheel_slip_scale_mps,
+        )
 
-        mix = vib + gear + engine
+        mix = vib + gear + engine + brake + rev_limit + slip
         np.multiply(mix, cfg.master_gain, out=mix)
         np.clip(mix, -1.0, 1.0, out=mix)
         outdata[:, 0] = mix

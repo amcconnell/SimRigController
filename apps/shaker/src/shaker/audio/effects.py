@@ -170,6 +170,129 @@ class EngineRumble:
         return out
 
 
+class BrakeRumble:
+    """Low-frequency rumble whose amplitude scales with brake input above a threshold."""
+
+    def __init__(self, sample_rate: int) -> None:
+        self.sr = sample_rate
+        self._phase = 0.0
+        self._smoothed_amp = 0.0
+
+    def process(
+        self,
+        n_frames: int,
+        brake: int,
+        gain: float,
+        enabled: bool,
+        freq_hz: float,
+        threshold_pct: float,
+    ) -> np.ndarray:
+        out = np.zeros(n_frames, dtype=np.float32)
+        if not enabled or freq_hz <= 0:
+            self._smoothed_amp *= 0.5
+            return out
+
+        brake_pct = brake / 255.0
+        threshold = threshold_pct / 100.0
+        if brake_pct <= threshold or threshold >= 1.0:
+            self._smoothed_amp *= 0.5
+            return out
+
+        normalized = (brake_pct - threshold) / (1.0 - threshold)
+        target = normalized * gain
+
+        alpha = 0.3
+        self._smoothed_amp = alpha * target + (1.0 - alpha) * self._smoothed_amp
+
+        omega = 2.0 * np.pi * freq_hz / self.sr
+        phases = self._phase + omega * np.arange(n_frames, dtype=np.float32)
+        out[:] = np.sin(phases) * self._smoothed_amp
+        self._phase = float((self._phase + omega * n_frames) % (2.0 * np.pi))
+        return out
+
+
+class RevLimiter:
+    """Distinct buzz when engine RPM is at or above a configurable redline fraction."""
+
+    def __init__(self, sample_rate: int) -> None:
+        self.sr = sample_rate
+        self._phase = 0.0
+        self._smoothed_amp = 0.0
+
+    def process(
+        self,
+        n_frames: int,
+        rpm_pct: float,
+        gain: float,
+        enabled: bool,
+        freq_hz: float,
+        trigger_pct: float,
+    ) -> np.ndarray:
+        out = np.zeros(n_frames, dtype=np.float32)
+        if not enabled or freq_hz <= 0:
+            self._smoothed_amp *= 0.5
+            return out
+
+        trigger = trigger_pct / 100.0
+        if rpm_pct <= trigger or trigger >= 1.0:
+            self._smoothed_amp *= 0.5
+            return out
+
+        normalized = (rpm_pct - trigger) / (1.0 - trigger)
+        normalized = max(0.0, min(1.0, normalized))
+        target = normalized * gain
+
+        alpha = 0.45  # snappier so the limiter is felt right at threshold
+        self._smoothed_amp = alpha * target + (1.0 - alpha) * self._smoothed_amp
+
+        omega = 2.0 * np.pi * freq_hz / self.sr
+        phases = self._phase + omega * np.arange(n_frames, dtype=np.float32)
+        out[:] = np.sin(phases) * self._smoothed_amp
+        self._phase = float((self._phase + omega * n_frames) % (2.0 * np.pi))
+        return out
+
+
+class WheelSlip:
+    """Buzz triggered by wheelspin or lockup (any wheel's speed diverging from the car's)."""
+
+    def __init__(self, sample_rate: int) -> None:
+        self.sr = sample_rate
+        self._phase = 0.0
+        self._smoothed_amp = 0.0
+
+    def process(
+        self,
+        n_frames: int,
+        slip_magnitude: float,
+        gain: float,
+        enabled: bool,
+        freq_hz: float,
+        threshold_mps: float,
+        scale_mps: float,
+    ) -> np.ndarray:
+        out = np.zeros(n_frames, dtype=np.float32)
+        if not enabled or freq_hz <= 0 or scale_mps <= 0:
+            self._smoothed_amp *= 0.5
+            return out
+
+        if slip_magnitude <= threshold_mps:
+            self._smoothed_amp *= 0.5
+            return out
+
+        normalized = (slip_magnitude - threshold_mps) / scale_mps
+        normalized = max(0.0, min(1.0, normalized))
+        target = normalized * gain
+
+        alpha = 0.35
+        self._smoothed_amp = alpha * target + (1.0 - alpha) * self._smoothed_amp
+
+        omega = 2.0 * np.pi * freq_hz / self.sr
+        phases = self._phase + omega * np.arange(n_frames, dtype=np.float32)
+        out[:] = np.sin(phases) * self._smoothed_amp
+        self._phase = float((self._phase + omega * n_frames) % (2.0 * np.pi))
+        return out
+
+
 class GearShift:
     """Short percussive thump retriggered when the bus' shift counter advances.
 

@@ -46,6 +46,22 @@ class AudioConfig:
     engine_rumble_enabled: bool = True
     engine_rumble_gain: float = 1.0
     engine_rumble_rpm_divisor: float = 60.0
+    # Brake rumble: low-frequency hum while braking; amplitude scales with brake above threshold.
+    brake_rumble_enabled: bool = True
+    brake_rumble_gain: float = 1.0
+    brake_rumble_freq_hz: float = 30.0
+    brake_rumble_threshold_pct: float = 20.0
+    # Rev limiter: distinct buzz when engine_rpm / max_alert_rpm crosses trigger_pct.
+    rev_limiter_enabled: bool = True
+    rev_limiter_gain: float = 1.0
+    rev_limiter_freq_hz: float = 75.0
+    rev_limiter_trigger_pct: float = 95.0
+    # Wheel slip: buzz when any wheel speed diverges from vehicle speed (spin or lockup).
+    wheel_slip_enabled: bool = True
+    wheel_slip_gain: float = 1.0
+    wheel_slip_freq_hz: float = 90.0
+    wheel_slip_threshold_mps: float = 2.0
+    wheel_slip_scale_mps: float = 5.0
     gear_shift_enabled: bool = True
     gear_shift_gain: float = 1.0
     gear_shift_freq_hz: float = 44.0
