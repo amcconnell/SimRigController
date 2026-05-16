@@ -1,7 +1,9 @@
 SHAKER_DIR := apps/shaker
+FRONTEND_DIR := $(SHAKER_DIR)/frontend
 ANSIBLE_DIR := ansible
 
 .PHONY: dev test lint format sync _unhide \
+        frontend-install frontend-dev frontend-build \
         ansible-deps ansible-ping ansible-syntax ansible-check ansible-deploy
 
 # macOS Sequoia tags files written by uv with com.apple.provenance, which sets
@@ -26,6 +28,20 @@ lint: _unhide
 format:
 	cd $(SHAKER_DIR) && uv run ruff format .
 
+# --- Frontend (Vite + React) ----------------------------------------------
+
+frontend-install:
+	cd $(FRONTEND_DIR) && npm install
+
+# Live UI development against the running Pi (proxies /api/* to simrig-pi.local).
+frontend-dev:
+	cd $(FRONTEND_DIR) && npm run dev
+
+# Production build — emits hashed bundles into src/shaker/web/static/.
+# Run this before `make ansible-deploy` after any UI change.
+frontend-build:
+	cd $(FRONTEND_DIR) && npm run build
+
 # --- Ansible deployment ----------------------------------------------------
 
 ansible-deps:
@@ -40,5 +56,5 @@ ansible-syntax:
 ansible-check:
 	cd $(ANSIBLE_DIR) && ansible-playbook site.yml --check --diff --ask-become-pass
 
-ansible-deploy:
+ansible-deploy: frontend-build
 	cd $(ANSIBLE_DIR) && ansible-playbook site.yml --ask-become-pass

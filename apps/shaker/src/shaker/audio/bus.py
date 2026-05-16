@@ -73,6 +73,9 @@ class AudioBus:
         self.features: TelemetryFeatures = TelemetryFeatures()
         # Monotonically incremented when the gear changes upward in a sane range.
         self.gear_shift_count: int = 0
+        # System-wide mute. In-memory only — doesn't persist across restarts
+        # (intentional: "I muted to take a call" shouldn't pollute config).
+        self.muted: bool = False
 
         # Internal — only touched from the asyncio side.
         self._hpf_FL = _OnePoleHPF()

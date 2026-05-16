@@ -12,6 +12,15 @@ dist/
 # Local Claude Code settings
 .claude/settings.local.json
 
+# Frontend (Vite + npm). The built bundle in apps/shaker/src/shaker/web/static/
+# IS committed so the Pi deploy doesn't need Node — npm install + npm run build
+# happen on the Mac.
+apps/shaker/frontend/node_modules/
+apps/shaker/frontend/tsconfig.tsbuildinfo
+
+# User profile data — generated on first deploy via Ansible template.
+apps/shaker/config/profiles.json
+
 # OS
 .DS_Store
 

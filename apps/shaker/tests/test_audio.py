@@ -197,6 +197,24 @@ def test_audio_bus_captures_brake_input() -> None:
     assert bus.features.brake == 180
 
 
+def test_audio_bus_mute_defaults_off() -> None:
+    bus = AudioBus(AudioConfig())
+    assert bus.muted is False
+
+
+def test_audio_bus_mute_is_in_memory_only() -> None:
+    """Mute is intentionally not part of AudioConfig — flipping it doesn't
+    touch the config and so it can't accidentally pollute a saved profile."""
+    bus = AudioBus(AudioConfig())
+    bus.muted = True
+    # Pushing packets doesn't unmute or persist mute through features.
+    p = _active_packet()
+    bus.push_packet(p)
+    assert bus.muted is True
+    bus.muted = False
+    assert bus.muted is False
+
+
 def test_audio_bus_brake_test_override_peaks_at_midpoint() -> None:
     bus = AudioBus(AudioConfig())
     bus.trigger_test_brake_rumble(duration_s=0.2, peak_brake=200)

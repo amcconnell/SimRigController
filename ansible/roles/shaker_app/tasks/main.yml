@@ -48,6 +48,17 @@
     force: false
   notify: Restart shaker service
 
+- name: Lay down initial profiles.json (only if missing)
+  # The profiles file is user data — created on first deploy, preserved on
+  # subsequent re-deploys so user-created profiles survive code updates.
+  ansible.builtin.template:
+    src: profiles.json.j2
+    dest: "{{ simrig_app_root }}/config/profiles.json"
+    owner: "{{ simrig_app_user }}"
+    group: "{{ simrig_app_group }}"
+    mode: "0644"
+    force: false
+
 - name: Sync application source
   # Runs as the SSH user (no become) since /opt/simrig/shaker is group-writable
   # for the app group. config/ is excluded — it's managed by the template task

@@ -165,6 +165,10 @@ class AudioOutput:
             cfg.wheel_slip_scale_mps,
         )
 
+        if self._bus.muted:
+            outdata[:, 0] = 0.0
+            return
+
         mix = vib + gear + engine + brake + rev_limit + slip
         np.multiply(mix, cfg.master_gain, out=mix)
         np.clip(mix, -1.0, 1.0, out=mix)
