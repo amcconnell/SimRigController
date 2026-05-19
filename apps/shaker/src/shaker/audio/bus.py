@@ -112,6 +112,18 @@ class AudioBus:
     def update_audio_config(self, cfg: AudioConfig) -> None:
         self.audio_config = cfg
 
+    def reset_features(self) -> None:
+        """Clear all derived state — audio goes silent until packets resume.
+
+        Called when telemetry stops arriving (GT7 exited or PS5 disconnected)
+        so the last in-session values don't keep driving the shaker forever.
+        Idempotent; safe to call repeatedly while telemetry is stale.
+        """
+        self.features = TelemetryFeatures()
+        for f in (self._hpf_FL, self._hpf_FR, self._hpf_RL, self._hpf_RR):
+            f.reset()
+        self._last_gear = None
+
     def current_vibration_activity(self) -> float:
         """Activity value the audio thread should use this callback."""
         if time.monotonic() < self._test_vibration_until:
@@ -193,10 +205,7 @@ class AudioBus:
         - not `is_on_track`: between sessions, pre-race waiting, etc. (flags bit 0)
         """
         if p.lap_count < 0 or is_paused(p) or not is_on_track(p):
-            self.features = TelemetryFeatures()
-            for f in (self._hpf_FL, self._hpf_FR, self._hpf_RL, self._hpf_RR):
-                f.reset()
-            self._last_gear = None
+            self.reset_features()
             return
 
         # Per-corner HPF — isolates bump transients from slow load shifts.

@@ -491,6 +491,37 @@ def test_audio_bus_ignores_paused_packet() -> None:
     assert bus.features.engine_rpm == 0.0  # reset
 
 
+def test_audio_bus_reset_features_clears_derived_state() -> None:
+    bus = AudioBus(AudioConfig())
+    # Build up some state from a few active packets.
+    p = _active_packet()
+    p.max_alert_rpm = 8000
+    p.engine_rpm = 4000.0
+    p.throttle = 200
+    p.brake = 50
+    p.wheel_rps_FL = 50.0
+    p.tire_radius_FL = 0.3
+    p.suspension_FL = 0.05
+    for _ in range(5):
+        bus.push_packet(p)
+    assert bus.features.engine_rpm == 4000.0
+
+    # Reset (simulating "telemetry went stale").
+    bus.reset_features()
+    assert bus.features == type(bus.features)()  # back to defaults
+    assert bus.features.engine_rpm == 0.0
+    assert bus.features.throttle == 0
+    assert bus.features.brake == 0
+
+
+def test_audio_bus_reset_features_idempotent() -> None:
+    bus = AudioBus(AudioConfig())
+    bus.reset_features()
+    bus.reset_features()
+    bus.reset_features()
+    assert bus.features.engine_rpm == 0.0
+
+
 def test_audio_bus_ignores_off_track_packet() -> None:
     bus = AudioBus(AudioConfig())
     p = _active_packet()

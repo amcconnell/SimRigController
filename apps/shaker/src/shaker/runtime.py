@@ -38,7 +38,11 @@ async def run(config_path: Path = cfg_mod.DEFAULT_CONFIG_PATH) -> int:
 
     bus = AudioBus(state.config.audio)
     audio = AudioOutput(bus)
-    gt7 = GT7Client(state.config.gt7, on_packet=bus.push_packet)
+    gt7 = GT7Client(
+        state.config.gt7,
+        on_packet=bus.push_packet,
+        on_stale=bus.reset_features,
+    )
 
     def get_config() -> Config:
         return state.config
