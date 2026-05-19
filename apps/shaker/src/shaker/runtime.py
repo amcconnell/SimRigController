@@ -48,7 +48,26 @@ async def run(config_path: Path = cfg_mod.DEFAULT_CONFIG_PATH) -> int:
         return state.config
 
     def save_config(new: Config) -> None:
+        """Persist a new config and update in-memory state immediately.
+
+        Updating `state.config` synchronously (rather than waiting for the
+        file watcher) eliminates a write race: without this, two rapid PUTs
+        could both read the same pre-write `state.config` and the second
+        would clobber the first's changes when it merged + wrote to disk.
+
+        Hot-reloadable sections are propagated here for the same reason —
+        otherwise the audio thread keeps using stale settings until the
+        watcher catches up. The watcher remains useful for external edits
+        (e.g. SSH-editing shaker.toml directly).
+        """
+        old = state.config
         cfg_mod.save(new, config_path)
+        state.config = new
+        changed_sections = {c.split(".")[0] for c in cfg_mod.diff_paths(old, new)}
+        if "gt7" in changed_sections:
+            gt7.update_config(new.gt7)
+        if "audio" in changed_sections:
+            bus.update_audio_config(new.audio)
 
     fastapi_app = create_app(get_config=get_config, save_config=save_config, gt7=gt7, bus=bus)
     ucfg = uvicorn.Config(
