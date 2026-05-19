@@ -17,11 +17,13 @@ from shaker.gt7.protocol import (
 )
 
 PacketCallback = Callable[[TelemetryPacket], None]
+StaleCallback = Callable[[], None]
 
 log = logging.getLogger(__name__)
 
 _DISCOVERY_HEARTBEAT_S = 1.0
 _STALE_AFTER_S = 2.0
+_WATCHDOG_INTERVAL_S = 0.5
 
 
 @dataclass
@@ -37,11 +39,17 @@ class Status:
 class GT7Client:
     """Asyncio UDP client: discovers PS5, sends heartbeats, parses telemetry."""
 
-    def __init__(self, config: GT7Config, on_packet: PacketCallback | None = None) -> None:
+    def __init__(
+        self,
+        config: GT7Config,
+        on_packet: PacketCallback | None = None,
+        on_stale: StaleCallback | None = None,
+    ) -> None:
         self._config = config
         self._configured_ip: str | None = config.ps5_ip
         self._discovered_ip: str | None = None
         self._on_packet = on_packet
+        self._on_stale = on_stale
         self.latest_packet: TelemetryPacket | None = None
         self._packet_count = 0
         self._packet_window: list[float] = []  # timestamps for rate calc
@@ -64,14 +72,16 @@ class GT7Client:
         )
         log.info("listening on :%d for GT7 telemetry", GT7_BIND_PORT)
         heartbeat_task = asyncio.create_task(self._heartbeat_loop(), name="gt7-heartbeat")
+        watchdog_task = asyncio.create_task(self._watchdog_loop(), name="gt7-watchdog")
         try:
             await self._stop.wait()
         finally:
-            heartbeat_task.cancel()
-            try:
-                await heartbeat_task
-            except asyncio.CancelledError:
-                pass
+            for t in (heartbeat_task, watchdog_task):
+                t.cancel()
+                try:
+                    await t
+                except asyncio.CancelledError:
+                    pass
             self._transport.close()
             self._transport = None
 
@@ -136,6 +146,29 @@ class GT7Client:
                 self._on_packet(packet)
             except Exception:
                 log.exception("on_packet callback failed")
+
+    async def _watchdog_loop(self) -> None:
+        """Reset bus state when telemetry stops arriving (GT7 exited / PS5 off).
+
+        Without this, the last in-session features keep driving the shaker
+        forever — the packet-rejection path in `bus.push_packet` only triggers
+        when GT7 sends menu/paused packets, not when it stops sending entirely.
+        """
+        while not self._stop.is_set():
+            try:
+                await asyncio.wait_for(self._stop.wait(), timeout=_WATCHDOG_INTERVAL_S)
+                return
+            except asyncio.TimeoutError:
+                pass
+
+            if self._last_packet_mono is None or self._on_stale is None:
+                continue
+            age = time.monotonic() - self._last_packet_mono
+            if age > _STALE_AFTER_S:
+                try:
+                    self._on_stale()
+                except Exception:
+                    log.exception("on_stale callback failed")
 
     async def _heartbeat_loop(self) -> None:
         while not self._stop.is_set():
