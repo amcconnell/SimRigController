@@ -5,7 +5,7 @@ This module was ported from the racetrace project (track/telemetry.py)
 and trimmed to the fields the shaker needs.
 
 GT7 broadcasts 60 Hz telemetry over UDP on port 33740 once it has
-received a heartbeat ('A') on port 33739.
+received a heartbeat on port 33739.
 """
 
 from __future__ import annotations
@@ -17,7 +17,11 @@ GT7_RECEIVE_PORT = 33739
 GT7_BIND_PORT = 33740
 PACKET_RATE_HZ = 60
 
-HEARTBEAT = b"A"
+# GT7 locks the session's packet format to whichever heartbeat type it
+# receives first ('A'/'B'/'~') and ignores later requests for a different
+# one. Request '~' (extended, a superset of 'A' at the same offsets) so we
+# don't starve other tools on the LAN that need the extended fields.
+HEARTBEAT = b"~"
 
 _HEADER_LE = b"0S7G"
 _HEADER_BE = b"G6S0"
@@ -31,7 +35,7 @@ def decrypt_packet(data: bytes) -> bytes:
     """Decrypt a GT7 telemetry packet using Salsa20.
 
     The IV is derived from a seed at byte offset 0x40:
-      iv = pack_le(seed ^ 0xDEADBEAF, seed)
+      iv = pack_le(seed ^ xor_constant, seed)
     """
     from Crypto.Cipher import Salsa20
 
@@ -39,10 +43,18 @@ def decrypt_packet(data: bytes) -> bytes:
         raise ValueError(f"Packet too short: {len(data)} bytes")
 
     seed = struct.unpack_from("<I", data, 0x40)[0]
-    iv = seed ^ 0xDEADBEAF
-    iv_bytes = struct.pack("<II", iv, seed)
     key = _SALSA_KEY[:32]
-    return Salsa20.new(key=key, nonce=iv_bytes).decrypt(data)
+    # The IV XOR constant differs by packet type ('~'/'A'/'B'), and GT7's
+    # first-heartbeat-wins lock means the session may serve any of them —
+    # try each and let the header validate. Ordered by expected frequency.
+    for xor in (0x55FABB4F, 0xDEADBEAF, 0xDEADBEEF):
+        iv_bytes = struct.pack("<II", seed ^ xor, seed)
+        out = Salsa20.new(key=key, nonce=iv_bytes).decrypt(data)
+        if out[:4] in (_HEADER_LE, _HEADER_BE):
+            return out
+    # No constant produced a valid header — return the last attempt so the
+    # caller's header check raises its usual, descriptive error.
+    return out
 
 
 @dataclass
