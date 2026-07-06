@@ -30,6 +30,14 @@ _ACTIVITY_DECAY = 0.92
 # Test-burst activity level: roughly maxes out the modulation envelope.
 _TEST_VIBRATION_ACTIVITY = 0.005
 
+# Exiting a session via GT7's pause menu clears the paused bit but leaves
+# on_track set and the payload frozen at the last driving frame (measured
+# 2026-07-06) — flags say "driving", so the flag gate passes and stale
+# values shake the rig indefinitely. Real physics never repeats
+# bit-identical floats for this many consecutive frames; a frozen payload
+# means a menu. Half a second at 60 Hz.
+_FREEZE_RESET_FRAMES = 30
+
 
 @dataclass
 class _OnePoleHPF:
@@ -83,6 +91,8 @@ class AudioBus:
         self._hpf_RL = _OnePoleHPF()
         self._hpf_RR = _OnePoleHPF()
         self._last_gear: int | None = None
+        self._freeze_key: tuple | None = None
+        self._freeze_count: int = 0
 
         # Test-mode override: monotonic deadline; while now() < this, the audio
         # thread sees a synthetic vibration activity. Lets the user verify
@@ -207,6 +217,23 @@ class AudioBus:
         if p.lap_count < 0 or is_paused(p) or not is_on_track(p):
             self.reset_features()
             return
+
+        # Frozen-payload gate — see _FREEZE_RESET_FRAMES. A stationary car
+        # false-positive is harmless: every effect is already silent at
+        # zero throttle/brake/motion.
+        key = (
+            p.position_x, p.position_y, p.position_z,
+            p.engine_rpm, p.speed_mps,
+            p.suspension_FL, p.suspension_FR, p.suspension_RL, p.suspension_RR,
+        )
+        if key == self._freeze_key:
+            self._freeze_count += 1
+            if self._freeze_count >= _FREEZE_RESET_FRAMES:
+                self.reset_features()
+                return
+        else:
+            self._freeze_key = key
+            self._freeze_count = 0
 
         # Per-corner HPF — isolates bump transients from slow load shifts.
         fl = self._hpf_FL.step(p.suspension_FL)

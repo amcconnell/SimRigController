@@ -535,3 +535,64 @@ def test_audio_bus_ignores_off_track_packet() -> None:
     off.engine_rpm = 4000.0
     bus.push_packet(off)
     assert bus.features.engine_rpm == 0.0  # reset
+
+
+# --- Frozen-payload gate ------------------------------------------------------
+# GT7's pause-menu exit leaves on_track set with the payload frozen at the
+# last driving frame — the flag gate passes, so the freeze gate must catch it.
+
+from shaker.audio.bus import _FREEZE_RESET_FRAMES  # noqa: E402
+
+
+def _driving_packet(frame: int) -> TelemetryPacket:
+    """An on-track packet whose physics vary per frame, like real driving."""
+    p = _active_packet()
+    p.engine_rpm = 4500.0 + frame
+    p.speed_mps = 47.0 + frame * 0.01
+    p.position_x = 100.0 + frame * 0.8
+    p.throttle = 200
+    p.max_alert_rpm = 8000
+    p.wheel_rps_FL = 130.0
+    p.tire_radius_FL = 0.3
+    return p
+
+
+def test_audio_bus_frozen_payload_resets_features() -> None:
+    bus = AudioBus(AudioConfig())
+    frozen = _driving_packet(0)
+    for _ in range(_FREEZE_RESET_FRAMES + 1):
+        bus.push_packet(frozen)
+    assert bus.features.engine_rpm == 0.0
+    assert bus.features.slip_magnitude == 0.0
+    assert bus.features.throttle == 0
+
+
+def test_audio_bus_varying_payload_is_not_frozen() -> None:
+    bus = AudioBus(AudioConfig())
+    for frame in range(_FREEZE_RESET_FRAMES * 3):
+        bus.push_packet(_driving_packet(frame))
+    assert bus.features.engine_rpm > 0.0
+    assert bus.features.throttle == 200
+
+
+def test_audio_bus_single_blip_restarts_freeze_window() -> None:
+    """One changed frame mid-freeze (seen in the wild at the exit boundary)
+    must not let stale data through indefinitely — only restart the count."""
+    bus = AudioBus(AudioConfig())
+    for _ in range(_FREEZE_RESET_FRAMES - 1):
+        bus.push_packet(_driving_packet(0))
+    bus.push_packet(_driving_packet(1))  # blip
+    assert bus.features.engine_rpm > 0.0  # not yet frozen
+    for _ in range(_FREEZE_RESET_FRAMES + 1):
+        bus.push_packet(_driving_packet(1))
+    assert bus.features.engine_rpm == 0.0  # re-froze and reset
+
+
+def test_audio_bus_recovers_after_freeze() -> None:
+    bus = AudioBus(AudioConfig())
+    for _ in range(_FREEZE_RESET_FRAMES + 1):
+        bus.push_packet(_driving_packet(0))
+    assert bus.features.engine_rpm == 0.0
+    # Driving resumes — features repopulate immediately.
+    bus.push_packet(_driving_packet(1))
+    assert bus.features.engine_rpm > 0.0
