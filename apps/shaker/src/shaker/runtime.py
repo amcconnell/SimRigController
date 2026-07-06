@@ -44,6 +44,9 @@ async def run(config_path: Path = cfg_mod.DEFAULT_CONFIG_PATH) -> int:
         on_stale=bus.reset_features,
     )
 
+    stop = asyncio.Event()
+    restart = asyncio.Event()
+
     def get_config() -> Config:
         return state.config
 
@@ -59,10 +62,18 @@ async def run(config_path: Path = cfg_mod.DEFAULT_CONFIG_PATH) -> int:
         otherwise the audio thread keeps using stale settings until the
         watcher catches up. The watcher remains useful for external edits
         (e.g. SSH-editing shaker.toml directly).
+
+        Restart-required changes must be handled here too: because state
+        already matches disk by the time the watcher fires, the watcher
+        no-ops for API-driven saves and would never see them.
         """
         old = state.config
         cfg_mod.save(new, config_path)
         state.config = new
+        if cfg_mod.needs_restart(old, new):
+            log.info("API config change requires restart")
+            restart.set()
+            return
         changed_sections = {c.split(".")[0] for c in cfg_mod.diff_paths(old, new)}
         if "gt7" in changed_sections:
             gt7.update_config(new.gt7)
@@ -78,9 +89,6 @@ async def run(config_path: Path = cfg_mod.DEFAULT_CONFIG_PATH) -> int:
         access_log=False,
     )
     server = uvicorn.Server(ucfg)
-
-    stop = asyncio.Event()
-    restart = asyncio.Event()
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
