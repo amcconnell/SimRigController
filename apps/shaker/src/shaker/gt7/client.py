@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -24,6 +25,10 @@ log = logging.getLogger(__name__)
 _DISCOVERY_HEARTBEAT_S = 1.0
 _STALE_AFTER_S = 2.0
 _WATCHDOG_INTERVAL_S = 0.5
+# After this long without a packet, drop the discovered lock and go back to
+# broadcast discovery — heals a wrong lock (a non-console tool answered our
+# discovery broadcast) and a PS5 that came back on a new DHCP lease.
+_REDISCOVER_AFTER_S = 30.0
 
 
 @dataclass
@@ -52,11 +57,12 @@ class GT7Client:
         self._on_stale = on_stale
         self.latest_packet: TelemetryPacket | None = None
         self._packet_count = 0
-        self._packet_window: list[float] = []  # timestamps for rate calc
+        self._packet_window: deque[float] = deque()  # timestamps for rate calc
         self._last_packet_mono: float | None = None
         self._started_mono: float = 0.0
         self._transport: asyncio.DatagramTransport | None = None
         self._stop = asyncio.Event()
+        self._ignored_sources: set[str] = set()
 
     @property
     def ps5_ip(self) -> str | None:
@@ -98,6 +104,7 @@ class GT7Client:
             # Force re-discovery if cleared, or jump to new target.
             if config.ps5_ip is None:
                 self._discovered_ip = None
+            self._ignored_sources.clear()
 
     def status(self) -> Status:
         now = time.monotonic()
@@ -109,21 +116,35 @@ class GT7Client:
         else:
             state = "connected"
 
-        # packets/sec over the last second
+        # packets/sec over the last second. The window is pruned on the
+        # receive path; entries older than the cutoff only linger once
+        # packets stop, so filter without mutating.
         cutoff = now - 1.0
-        recent = [t for t in self._packet_window if t >= cutoff]
-        self._packet_window = recent
+        recent = sum(1 for t in self._packet_window if t >= cutoff)
         return Status(
             state=state,
             ps5_ip=self.ps5_ip,
             packet_count=self._packet_count,
-            packets_per_sec=float(len(recent)),
+            packets_per_sec=float(recent),
             last_packet_age_s=last_age,
             discovery_elapsed_s=now - self._started_mono,
         )
 
     # Called from _GT7Protocol on every received UDP datagram.
     def _on_datagram(self, data: bytes, addr: tuple[str, int]) -> None:
+        # Pin to the locked source. Anyone on the LAN can send to :33740
+        # (e.g. another tool's replay stream) — without this, their packets
+        # would drive the shaker even though nobody is at the rig.
+        expected = self.ps5_ip
+        if expected is not None and addr[0] != expected:
+            if addr[0] not in self._ignored_sources:
+                self._ignored_sources.add(addr[0])
+                log.warning(
+                    "ignoring telemetry from unexpected source %s (locked to %s)",
+                    addr[0], expected,
+                )
+            return
+
         try:
             decrypted = decrypt_packet(data)
             packet = parse_packet(decrypted)
@@ -140,6 +161,11 @@ class GT7Client:
         now = time.monotonic()
         self._last_packet_mono = now
         self._packet_window.append(now)
+        # Prune here, not just in status() — with the web UI closed, status()
+        # may not run for days and the window would grow unboundedly.
+        cutoff = now - 1.0
+        while self._packet_window and self._packet_window[0] < cutoff:
+            self._packet_window.popleft()
 
         if self._on_packet is not None:
             try:
@@ -161,14 +187,24 @@ class GT7Client:
             except asyncio.TimeoutError:
                 pass
 
-            if self._last_packet_mono is None or self._on_stale is None:
-                continue
-            age = time.monotonic() - self._last_packet_mono
-            if age > _STALE_AFTER_S:
-                try:
-                    self._on_stale()
-                except Exception:
-                    log.exception("on_stale callback failed")
+            self._check_stale(time.monotonic())
+
+    def _check_stale(self, now: float) -> None:
+        if self._last_packet_mono is None:
+            return
+        age = now - self._last_packet_mono
+        if age > _STALE_AFTER_S and self._on_stale is not None:
+            try:
+                self._on_stale()
+            except Exception:
+                log.exception("on_stale callback failed")
+        if age > _REDISCOVER_AFTER_S and self._discovered_ip is not None:
+            log.info(
+                "no packets for %.0fs — dropping lock on %s, rediscovering",
+                age, self._discovered_ip,
+            )
+            self._discovered_ip = None
+            self._ignored_sources.clear()
 
     async def _heartbeat_loop(self) -> None:
         while not self._stop.is_set():
