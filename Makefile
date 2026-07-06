@@ -8,7 +8,8 @@ ANSIBLE_DIR := ansible
 
 # macOS Sequoia tags files written by uv with com.apple.provenance, which sets
 # UF_HIDDEN. Python 3.13's site.py skips hidden .pth files, breaking the
-# editable install. Clear the flag before any import-dependent target.
+# editable install. Sync first, then clear the flag, then run with --no-sync —
+# `uv run`'s implicit sync would re-hide the .pth AFTER the unhide otherwise.
 _unhide:
 	@-chflags nohidden $(SHAKER_DIR)/.venv/lib/python*/site-packages/*.pth 2>/dev/null || true
 
@@ -16,14 +17,14 @@ sync:
 	cd $(SHAKER_DIR) && uv sync
 	@$(MAKE) --no-print-directory _unhide
 
-dev: _unhide
-	cd $(SHAKER_DIR) && uv run python -m shaker
+dev: sync
+	cd $(SHAKER_DIR) && uv run --no-sync python -m shaker
 
-test: _unhide
-	cd $(SHAKER_DIR) && uv run pytest
+test: sync
+	cd $(SHAKER_DIR) && uv run --no-sync pytest
 
-lint: _unhide
-	cd $(SHAKER_DIR) && uv run ruff check .
+lint: sync
+	cd $(SHAKER_DIR) && uv run --no-sync ruff check .
 
 format:
 	cd $(SHAKER_DIR) && uv run ruff format .
