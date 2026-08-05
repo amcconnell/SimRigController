@@ -51,8 +51,9 @@ export interface AudioConfig {
   wheel_slip_enabled: boolean;
   wheel_slip_gain: number;
   wheel_slip_freq_hz: number;
+  wheel_slip_threshold_pct: number;
+  wheel_slip_scale_pct: number;
   wheel_slip_threshold_mps: number;
-  wheel_slip_scale_mps: number;
   wheel_slip_lock_freq_hz: number;
 
   gear_shift_enabled: boolean;

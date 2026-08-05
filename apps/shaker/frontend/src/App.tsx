@@ -266,12 +266,14 @@ export function App() {
           >
             <NumberField label="Frequency" unit="Hz" value={A.wheel_slip_freq_hz} step={1} min={10} max={200} onChange={a("wheel_slip_freq_hz")}
               hint="Sharper than engine/brake bands so spin and lockup feel like a distinct signal." />
-            <NumberField label="Threshold" unit="m/s" value={A.wheel_slip_threshold_mps} step={0.1} min={0} max={20} onChange={a("wheel_slip_threshold_mps")}
-              hint="Per-corner |wheel_rps × tire_radius − speed| below this is ignored. 2 m/s catches significant spin/lock without firing on normal grip events." />
             <NumberField label="Lockup frequency" unit="Hz" value={A.wheel_slip_lock_freq_hz} step={1} min={10} max={200} onChange={a("wheel_slip_lock_freq_hz")}
               hint="Locking wheels get their own, lower voice than spinning ones — a locked tyre grinds where a spinning one scrabbles. On two channels the axle that slipped picks the shaker, so a front lockup and a rear break-away become two distinct events instead of one buzz." />
-            <NumberField label="Scale" unit="m/s" value={A.wheel_slip_scale_mps} step={0.5} min={0.5} max={30} onChange={a("wheel_slip_scale_mps")}
-              hint="Slip above threshold ramps to full amplitude over this range. 5 m/s = full effect at threshold + 5 m/s." />
+            <NumberField label="Threshold" unit="% slip" value={A.wheel_slip_threshold_pct} step={0.5} min={0} max={50} onChange={a("wheel_slip_threshold_pct")}
+              hint="How far a wheel's speed may diverge from the car's, as a percentage of vehicle speed, before this fires. A ratio rather than an absolute speed because that is what a tyre responds to — peak grip sits near 10-20% whatever the speed. 8% gives warning just before the limit; lower it for earlier warning at the cost of firing during hard-but-controlled driving." />
+            <NumberField label="Scale" unit="% slip" value={A.wheel_slip_scale_pct} step={0.5} min={0.5} max={50} onChange={a("wheel_slip_scale_pct")}
+              hint="Slip ratio above the threshold at which the effect reaches full strength. Smaller = a steeper ramp, so early slip is felt more strongly. 12% means full effect once you are 12 points past the threshold." />
+            <NumberField label="Minimum slip" unit="m/s" value={A.wheel_slip_threshold_mps} step={0.1} min={0} max={5} onChange={a("wheel_slip_threshold_mps")}
+              hint="Absolute floor applied on top of the ratio. Near a standstill the ratio denominator collapses and any wheel twitch reads as a huge slide, so this keeps a parked car and the pit lane quiet. Rarely needs changing." />
           </EffectCard>
 
           <EffectCard

@@ -88,8 +88,19 @@ class AudioConfig:
     wheel_slip_enabled: bool = True
     wheel_slip_gain: float = 1.0
     wheel_slip_freq_hz: float = 90.0
-    wheel_slip_threshold_mps: float = 2.0
-    wheel_slip_scale_mps: float = 5.0
+    # Slip is judged as a *ratio* of vehicle speed, because that is what a tyre
+    # responds to — peak grip sits near 10-20% slip regardless of how fast the
+    # car is going. A fixed m/s threshold cannot express that: 2 m/s is 20% of
+    # a 36 km/h hairpin (already sliding, no warning) and 2.5% at 288 km/h
+    # (inside normal grip, so it chatters on every straight). Same tyre
+    # behaviour, opposite outcomes, and no single value fixes both ends.
+    wheel_slip_threshold_pct: float = 8.0
+    # Ratio above the threshold at which the effect reaches full amplitude.
+    wheel_slip_scale_pct: float = 12.0
+    # Absolute floor, applied as well as the ratio. Near a standstill the ratio
+    # denominator collapses and any wheel twitch reads as enormous slip, so a
+    # small m/s minimum keeps a parked car and a slow pit lane quiet.
+    wheel_slip_threshold_mps: float = 0.5
     # Lockup gets its own, lower voice. A locked tyre grinds; a spinning one
     # scrabbles higher. Both clear the 30 Hz brake, 44 Hz gear-shift and 75 Hz
     # limiter bands so a corner entry stays legible as separate events.

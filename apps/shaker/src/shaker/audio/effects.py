@@ -363,6 +363,11 @@ class RevLimiter(_ToneEffect):
 # packet to packet — without a margin the tone would warble at up to 60 Hz.
 _SLIP_SIGN_MARGIN_MPS = 0.5
 
+# Slip ratio is |slip| / speed, which blows up as speed approaches zero. Below
+# this the denominator is pinned, so a stationary car with a twitching wheel
+# reads as a small absolute slip rather than an infinite ratio.
+_SLIP_REF_FLOOR_MPS = 3.0
+
 
 class WheelSlip(_ToneEffect):
     """Buzz triggered by wheelspin or lockup (a wheel's speed diverging from the car's).
@@ -387,19 +392,32 @@ class WheelSlip(_ToneEffect):
         gain: float,
         enabled: bool,
         freq_hz: float,
-        threshold_mps: float,
-        scale_mps: float,
+        threshold_pct: float,
+        scale_pct: float,
+        speed_mps: float,
+        floor_mps: float = 0.5,
         lock_freq_hz: float = 0.0,
     ) -> np.ndarray:
         magnitude = abs(slip)
+        ratio = magnitude / max(speed_mps, _SLIP_REF_FLOOR_MPS)
+        threshold = threshold_pct / 100.0
+        scale = scale_pct / 100.0
         target = 0.0
-        if enabled and freq_hz > 0 and scale_mps > 0 and magnitude > threshold_mps:
-            target = min(1.0, (magnitude - threshold_mps) / scale_mps) * gain
+        # Both gates must pass: the ratio is what a tyre actually responds to,
+        # and the absolute floor stops a crawling car reading as a big slide.
+        if (
+            enabled and freq_hz > 0 and scale > 0
+            and magnitude > floor_mps and ratio > threshold
+        ):
+            target = min(1.0, (ratio - threshold) / scale) * gain
 
         # Only commit to a character once clearly past the threshold; otherwise
         # hold whatever it was. Phase is continuous across a switch, so the
-        # change reads as a pitch shift rather than a click.
-        margin = threshold_mps + _SLIP_SIGN_MARGIN_MPS
+        # change reads as a pitch shift rather than a click. The margin is
+        # computed in m/s off whichever gate is actually binding at this speed,
+        # so it tracks the ratio threshold rather than being fixed.
+        margin = max(floor_mps, threshold * max(speed_mps, _SLIP_REF_FLOOR_MPS))
+        margin += _SLIP_SIGN_MARGIN_MPS
         if slip < -margin:
             self._locked = True
         elif slip > margin:

@@ -273,8 +273,10 @@ class AudioOutput:
                 cfg.wheel_slip_gain,
                 cfg.wheel_slip_enabled,
                 cfg.wheel_slip_freq_hz,
+                cfg.wheel_slip_threshold_pct,
+                cfg.wheel_slip_scale_pct,
+                self._bus.features.speed_mps,
                 cfg.wheel_slip_threshold_mps,
-                cfg.wheel_slip_scale_mps,
                 cfg.wheel_slip_lock_freq_hz,
             )
         else:
@@ -284,8 +286,10 @@ class AudioOutput:
                 cfg.wheel_slip_gain,
                 cfg.wheel_slip_enabled,
                 cfg.wheel_slip_freq_hz,
+                cfg.wheel_slip_threshold_pct,
+                cfg.wheel_slip_scale_pct,
+                self._bus.features.speed_mps,
                 cfg.wheel_slip_threshold_mps,
-                cfg.wheel_slip_scale_mps,
             )
 
         if not stereo:
@@ -317,8 +321,10 @@ class AudioOutput:
             cfg.wheel_slip_gain,
             cfg.wheel_slip_enabled,
             cfg.wheel_slip_freq_hz,
+            cfg.wheel_slip_threshold_pct,
+            cfg.wheel_slip_scale_pct,
+            self._bus.features.speed_mps,
             cfg.wheel_slip_threshold_mps,
-            cfg.wheel_slip_scale_mps,
             cfg.wheel_slip_lock_freq_hz,
         )
 

@@ -136,3 +136,51 @@ def test_wheel_slip_effect_is_silent_while_merely_driving() -> None:
     for _ in range(60):
         out._callback(buf, 960, None, None)
     assert np.max(np.abs(buf)) < 1e-4, "slip effect is droning during a plain cruise"
+
+
+# --- Slip judged as a ratio, not an absolute speed ---------------------------
+
+
+def _fires(speed_mps: float, slip_mps: float) -> bool:
+    """Would the wheel-slip effect fire, at shipped defaults?"""
+    import numpy as np
+
+    from shaker.audio.effects import WheelSlip
+
+    cfg = AudioConfig()
+    fx = WheelSlip(48000)
+    for _ in range(40):
+        out = fx.process(
+            960, slip=slip_mps, gain=1.0, enabled=True, freq_hz=cfg.wheel_slip_freq_hz,
+            threshold_pct=cfg.wheel_slip_threshold_pct,
+            scale_pct=cfg.wheel_slip_scale_pct, speed_mps=speed_mps,
+            floor_mps=cfg.wheel_slip_threshold_mps,
+        )
+    return bool(np.max(np.abs(out)) > 0.01)
+
+
+def test_the_same_slip_ratio_behaves_the_same_at_any_speed() -> None:
+    """The point of the change. A fixed m/s threshold meant 2 m/s was 20% slip
+    in a 36 km/h hairpin — already sliding, no warning — and 2.5% at 288 km/h,
+    inside normal grip, so it chattered on every straight."""
+    for speed in (10.0, 20.0, 45.0, 60.0, 80.0):
+        assert _fires(speed, speed * 0.15), f"15% slip missed at {speed} m/s"
+        assert not _fires(speed, speed * 0.04), f"4% slip fired at {speed} m/s"
+
+
+def test_normal_high_speed_grip_no_longer_chatters() -> None:
+    """3 m/s of slip at 216 km/h is 5% — ordinary tyre behaviour, not an event.
+    The old absolute threshold of 2 m/s fired on it."""
+    assert not _fires(60.0, 3.0)
+
+
+def test_slow_corner_slide_now_warns() -> None:
+    """1.5 m/s at 36 km/h is 15% slip — genuinely sliding. The old 2 m/s
+    threshold stayed silent through it."""
+    assert _fires(10.0, 1.5)
+
+
+def test_absolute_floor_keeps_a_crawling_car_quiet() -> None:
+    """Near a standstill the ratio denominator collapses, so a tiny twitch
+    would otherwise read as an enormous slide."""
+    assert not _fires(0.5, 0.3)

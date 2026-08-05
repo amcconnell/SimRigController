@@ -214,7 +214,7 @@ def test_wheel_slip_silent_below_threshold() -> None:
     s = WheelSlip(48000)
     for _ in range(10):
         out = s.process(480, slip=1.0, gain=1.0, enabled=True,
-                        freq_hz=90.0, threshold_mps=2.0, scale_mps=5.0)
+                        freq_hz=90.0, threshold_pct=8.0, scale_pct=12.0, speed_mps=50.0)
     assert np.max(np.abs(out)) < 1e-6
 
 
@@ -222,7 +222,7 @@ def test_wheel_slip_produces_audio_above_threshold() -> None:
     s = WheelSlip(48000)
     for _ in range(30):
         out = s.process(480, slip=6.0, gain=1.0, enabled=True,
-                        freq_hz=90.0, threshold_mps=2.0, scale_mps=5.0)
+                        freq_hz=90.0, threshold_pct=8.0, scale_pct=12.0, speed_mps=50.0)
     assert np.max(np.abs(out)) > 0.1
 
 
