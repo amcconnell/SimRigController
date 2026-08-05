@@ -139,9 +139,22 @@ class TelemetryPacket:
     fuel_level: float = 0.0
     fuel_capacity: float = 0.0
 
-    # Body motion, only present in the longer packet layouts — see
-    # _MIN_MOTION_LEN. Units and reference frame are UNVERIFIED; nothing
-    # should depend on them until a live capture says what they are.
+    # Body motion, present only in the longer packet layouts — see
+    # _MIN_MOTION_LEN. All three are body-frame accelerations in m/s^2 with
+    # gravity excluded, established on a live console 2026-08-05 over 665
+    # samples (tests/data/motion_log.jsonl):
+    #
+    #   surge  longitudinal, + accelerating. Against d(speed)/dt restricted to
+    #          straight-line driving: r=+0.989, scale 0.992. Under braking,
+    #          -12.50 vs -12.42. Cornering fits worse (0.77) only because the
+    #          reference is path-tangential while surge is body-longitudinal.
+    #   sway   lateral, and NEGATED with respect to speed * ang_vel_y —
+    #          opposite sign in 388 of 394 samples above 4 m/s^2.
+    #   heave  vertical, gravity excluded: median exactly 0.00 while calm at
+    #          both 36 and 90+ km/h, and only 1 of 596 samples anywhere near
+    #          -g. A rollover in the capture sweeps it -9.6 -> -2.9 -> -9.6 as
+    #          the body axis rotates through gravity, which is what confirms
+    #          the frame is the body and not the world.
     sway: float = 0.0
     heave: float = 0.0
     surge: float = 0.0

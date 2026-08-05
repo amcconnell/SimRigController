@@ -87,18 +87,20 @@ class TelemetryFeatures:
     slip_magnitude: float = 0.0
     lap_count: int = 0
 
-    # Body motion straight off the wire. Meaning UNVERIFIED — acceleration,
-    # velocity and displacement are all plausible, and the reference frame is
-    # unknown. Nothing audible reads these.
+    # Body motion straight off the wire: body-frame accelerations in m/s^2,
+    # gravity excluded. sway is negated relative to speed * ang_vel_y. See
+    # protocol.py for the measurements. Nothing audible reads these — they
+    # exist for the motion work.
     sway: float = 0.0
     heave: float = 0.0
     surge: float = 0.0
     has_motion: bool = False
 
-    # Independently derived references, computed purely so the fields above
-    # can be identified by comparison on a live rig. long_accel is d(speed)/dt;
-    # lat_accel is v * yaw_rate, exact only at zero sideslip but close enough
-    # to tell an acceleration from a displacement.
+    # Independently derived references. These identified the fields above and
+    # are kept as a live cross-check: if a GT7 update moved the offsets, surge
+    # would stop tracking long_accel and the diagnostics screen would show it.
+    # long_accel is d(speed)/dt; lat_accel is v * yaw_rate, exact only at zero
+    # sideslip.
     long_accel: float = 0.0   # m/s^2, + accelerating
     lat_accel: float = 0.0    # m/s^2
 

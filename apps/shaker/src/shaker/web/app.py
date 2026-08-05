@@ -208,12 +208,11 @@ def create_app(
 def _motion_diagnostics(f: TelemetryFeatures) -> dict[str, Any]:
     """Body-motion fields, next to independently derived references.
 
-    sway/heave/surge arrive in the longer packet layouts and nothing documents
-    what they are — acceleration, velocity and displacement are all plausible,
-    and the frame is unknown. long_accel (d speed/dt) and lat_accel
-    (v * yaw_rate) are computed here from fields whose meaning IS established,
-    so the unknowns can be identified by watching them side by side while
-    driving. Same approach that settled the wheel-rotation sign.
+    All three are body-frame accelerations in m/s^2 with gravity excluded,
+    identified on a live console by comparison against these same references
+    (see protocol.py). The references stay published because they remain a
+    useful cross-check: if a GT7 update moved the offsets, surge would stop
+    tracking long_accel and it would be visible here rather than silent.
     """
     return {
         "has_motion": f.has_motion,

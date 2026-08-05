@@ -15,15 +15,12 @@ interface MotionPanelProps {
 
 /** Body-motion fields alongside independently derived references.
  *
- * sway/heave/surge only appear in the longer packet layouts and nothing
- * documents what they are — acceleration, velocity and displacement are all
- * plausible, and the reference frame is unknown. long_accel and lat_accel are
- * derived from fields whose meaning IS established, so the unknowns can be
- * identified by watching them side by side while driving.
- *
- * Read the pairs, not the numbers. If surge tracks long_accel it is
- * longitudinal acceleration; if it lags and lingers it is a velocity or a
- * displacement; if it moves opposite it is sign-flipped like wheel_rps was.
+ * All three are body-frame accelerations in m/s^2 with gravity excluded,
+ * identified on a live console (see protocol.py). The references stay on
+ * screen because they remain a cross-check rather than an experiment: surge
+ * should track d(speed)/dt in a straight line and sway should mirror
+ * v x yaw rate. If a GT7 update moved the offsets, that agreement breaks here
+ * instead of silently corrupting whatever is built on top.
  */
 export function MotionPanel({ motion }: MotionPanelProps) {
   const m = motion ?? null;
@@ -50,7 +47,7 @@ export function MotionPanel({ motion }: MotionPanelProps) {
         <span className="text-sm font-semibold uppercase tracking-wider text-zinc-200">
           Body motion
         </span>
-        <span className="text-xs text-zinc-500">unverified — compare each pair</span>
+        <span className="text-xs text-zinc-500">body frame, m/s², gravity excluded</span>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
@@ -60,12 +57,13 @@ export function MotionPanel({ motion }: MotionPanelProps) {
       </div>
 
       <p className="mt-3 text-xs leading-relaxed text-zinc-500">
-        Brake hard in a straight line: <span className="text-zinc-300">surge</span> and{" "}
-        <span className="text-zinc-300">d(speed)/dt</span> should both go strongly negative and
-        return together. Then hold a steady corner:{" "}
-        <span className="text-zinc-300">sway</span> should hold a constant offset while{" "}
-        <span className="text-zinc-300">v x yaw rate</span> does the same. A field that lingers
-        after the input stops is a velocity or a displacement, not an acceleration.
+        <span className="text-zinc-300">surge</span> tracks{" "}
+        <span className="text-zinc-300">d(speed)/dt</span> in a straight line and reads low in
+        corners, where the reference is path-tangential and surge is body-longitudinal.{" "}
+        <span className="text-zinc-300">sway</span> mirrors{" "}
+        <span className="text-zinc-300">v x yaw rate</span> with the opposite sign — that is
+        GT7's convention, not an error. Persistent disagreement would mean the packet offsets
+        have moved.
       </p>
     </div>
   );
