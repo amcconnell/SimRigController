@@ -113,6 +113,10 @@ class TelemetryPacket:
     last_lap_ms: int = -1
 
     flags: int = 0
+    # GT7's numeric car identifier. Stable per car, so it can be looked up in
+    # a drivetrain table to decide which end of the rig a gear shift or engine
+    # thrum belongs on — facts the packet itself carries no field for.
+    car_code: int = 0
     throttle: int = 0
     brake: int = 0
     current_gear: int = 0
@@ -198,6 +202,10 @@ def parse_packet(data: bytes) -> TelemetryPacket:
     p.suggested_gear = (gear_byte >> 4) & 0x0F
     p.throttle = u8(0x91)
     p.brake = u8(0x92)
+
+    # Inside _MIN_PARSE_LEN (0x128) already, so this needs no extra length
+    # guard and cannot break the shorter 'A' packet layout.
+    p.car_code = i32(0x124)
 
     p.road_plane_x = f(0x94)
     p.road_plane_y = f(0x98)

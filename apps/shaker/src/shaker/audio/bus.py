@@ -124,6 +124,11 @@ class AudioBus:
         self.features: TelemetryFeatures = TelemetryFeatures()
         # Incremented on any change between two engaged gears — up or down.
         self.gear_shift_count: int = 0
+        # Latest car identity. Deliberately not part of TelemetryFeatures and
+        # not cleared by reset_features(): which car you are in does not stop
+        # being true because the game paused, and clearing it would make the
+        # rig re-derive its routing every time you open a menu.
+        self.car_code: int | None = None
         # System-wide mute. In-memory only — doesn't persist across restarts
         # (intentional: "I muted to take a call" shouldn't pollute config).
         self.muted: bool = False
@@ -167,6 +172,24 @@ class AudioBus:
         self._test_slip_duration: float = 0.0
         self._test_slip_peak_mps: float = 0.0
 
+        # Wiring check: a front-only pulse, a gap, then a rear-only pulse,
+        # rendered by the audio thread in place of the whole mix. The only way
+        # to prove the amp channels are not reversed — get that wrong and every
+        # routing decision in the app is silently inverted.
+        #
+        # Only the *request* lives here. The schedule is advanced by the audio
+        # thread in rendered frames rather than wall-clock time, so the pulse
+        # is exactly as long as it sounds regardless of callback jitter.
+        self.wiring_check_count: int = 0
+        self.wiring_pulse_s: float = 1.0
+        self.wiring_gap_s: float = 0.5
+
+        # Post-pan output levels, written by the audio thread and read by the
+        # web thread. Plain floats: torn reads are harmless for a meter, and a
+        # lock on the audio path is not.
+        self.meter_front: float = 0.0
+        self.meter_rear: float = 0.0
+
     def update_audio_config(self, cfg: AudioConfig) -> None:
         self.audio_config = cfg
 
@@ -189,6 +212,21 @@ class AudioBus:
         if time.monotonic() < self._test_vibration_until:
             return max(_TEST_VIBRATION_ACTIVITY, self.features.suspension_activity)
         return self.features.suspension_activity
+
+    def current_vibration_activity_front(self) -> float:
+        """Front-axle activity, with the same synthetic test burst applied.
+
+        The test button has to reach both channels or it can't be used to set
+        front/rear balance — which is most of what it is for on a two-shaker rig.
+        """
+        if time.monotonic() < self._test_vibration_until:
+            return max(_TEST_VIBRATION_ACTIVITY, self.features.suspension_activity_front)
+        return self.features.suspension_activity_front
+
+    def current_vibration_activity_rear(self) -> float:
+        if time.monotonic() < self._test_vibration_until:
+            return max(_TEST_VIBRATION_ACTIVITY, self.features.suspension_activity_rear)
+        return self.features.suspension_activity_rear
 
     def trigger_test_vibration(self, duration_s: float = 1.0) -> None:
         self._test_vibration_until = time.monotonic() + duration_s
@@ -255,6 +293,32 @@ class AudioBus:
             return self._test_slip_peak_mps * envelope
         return self.features.slip_magnitude
 
+    def current_slip_front(self) -> float:
+        """Signed front-axle slip. The test ramp drives this *negative* —
+        a locked front is what braking into a corner actually produces."""
+        elapsed = time.monotonic() - self._test_slip_start
+        if 0.0 <= elapsed < self._test_slip_duration:
+            progress = elapsed / self._test_slip_duration
+            envelope = 1.0 - abs(2.0 * progress - 1.0)
+            return -self._test_slip_peak_mps * envelope
+        return self.features.slip_front
+
+    def current_slip_rear(self) -> float:
+        """Signed rear-axle slip. The test ramp drives this *positive* — rear
+        wheelspin — so one button press demonstrates both voices and both
+        channels."""
+        elapsed = time.monotonic() - self._test_slip_start
+        if 0.0 <= elapsed < self._test_slip_duration:
+            progress = elapsed / self._test_slip_duration
+            envelope = 1.0 - abs(2.0 * progress - 1.0)
+            return self._test_slip_peak_mps * envelope
+        return self.features.slip_rear
+
+    def trigger_wiring_check(self, pulse_s: float = 1.0, gap_s: float = 0.5) -> None:
+        self.wiring_pulse_s = pulse_s
+        self.wiring_gap_s = gap_s
+        self.wiring_check_count += 1
+
     def push_packet(self, p: TelemetryPacket) -> None:
         """Update derived features and shift events from a new packet.
 
@@ -284,6 +348,8 @@ class AudioBus:
         else:
             self._freeze_key = key
             self._freeze_count = 0
+
+        self.car_code = p.car_code or None
 
         # Per-corner HPF — isolates bump transients from slow load shifts.
         fl = self._hpf_FL.step(p.suspension_FL)

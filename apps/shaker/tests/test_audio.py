@@ -213,7 +213,7 @@ def test_rev_limiter_produces_audio_above_trigger() -> None:
 def test_wheel_slip_silent_below_threshold() -> None:
     s = WheelSlip(48000)
     for _ in range(10):
-        out = s.process(480, slip_magnitude=1.0, gain=1.0, enabled=True,
+        out = s.process(480, slip=1.0, gain=1.0, enabled=True,
                         freq_hz=90.0, threshold_mps=2.0, scale_mps=5.0)
     assert np.max(np.abs(out)) < 1e-6
 
@@ -221,7 +221,7 @@ def test_wheel_slip_silent_below_threshold() -> None:
 def test_wheel_slip_produces_audio_above_threshold() -> None:
     s = WheelSlip(48000)
     for _ in range(30):
-        out = s.process(480, slip_magnitude=6.0, gain=1.0, enabled=True,
+        out = s.process(480, slip=6.0, gain=1.0, enabled=True,
                         freq_hz=90.0, threshold_mps=2.0, scale_mps=5.0)
     assert np.max(np.abs(out)) > 0.1
 
@@ -275,10 +275,16 @@ def test_audio_bus_brake_test_override_peaks_at_midpoint() -> None:
 
 def test_audio_bus_rev_limiter_test_override_crosses_redline() -> None:
     bus = AudioBus(AudioConfig())
-    bus.trigger_test_rev_limiter(duration_s=0.2)
-    time.sleep(0.1)
-    assert bus.current_rpm_pct() > 0.9
-    time.sleep(0.2)
+    bus.trigger_test_rev_limiter(duration_s=0.3)
+    # Sample across the window rather than sleeping to the exact apex of a
+    # triangular ramp: the peak is a single instant, so a single timed read
+    # fails whenever sleep() overshoots by a few milliseconds.
+    peak = 0.0
+    for _ in range(30):
+        peak = max(peak, bus.current_rpm_pct())
+        time.sleep(0.01)
+    assert peak > 0.9
+    time.sleep(0.3)
     assert bus.current_rpm_pct() == bus.features.engine_rpm_pct
 
 

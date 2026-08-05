@@ -14,6 +14,7 @@ from shaker import config as cfg_mod
 from shaker import profiles as profiles_mod
 from shaker.audio.bus import AudioBus, TelemetryFeatures
 from shaker.config import Config
+from shaker.gt7 import drivetrain
 from shaker.gt7.client import GT7Client
 from shaker.gt7.protocol import TelemetryPacket
 from shaker.profiles import DEFAULT_PROFILE_NAME
@@ -142,6 +143,7 @@ def create_app(
         return {
             "gt7": asdict(gt7.status()),
             "telemetry": _summarize_packet(gt7.latest_packet),
+            "car": _car_identity(bus.car_code),
             "muted": bus.muted,
             "axle": _axle_diagnostics(bus.features, gt7.latest_packet),
         }
@@ -176,6 +178,18 @@ def create_app(
         bus.trigger_test_wheel_slip(duration_s=2.0, peak_slip_mps=7.0)
         return {"ok": True, "duration_s": 2.0}
 
+    @app.post("/api/test/wiring")
+    def test_wiring() -> dict[str, Any]:
+        """Pulse front, pause, pulse rear — bypassing the whole mix.
+
+        The one question no amount of software can answer for itself: are the
+        amp channels the way round the app assumes? A reversed pair inverts
+        every routing decision and reads as "this feels subtly wrong" rather
+        than as a bug, so it needs a deliberate check.
+        """
+        bus.trigger_wiring_check(pulse_s=1.0, gap_s=0.5)
+        return {"ok": True, "pulse_s": 1.0, "gap_s": 0.5, "total_s": 2.5}
+
     @app.get("/")
     def index() -> FileResponse:
         return FileResponse(_STATIC_DIR / "index.html")
@@ -188,6 +202,21 @@ def create_app(
         app.mount("/assets", StaticFiles(directory=_ASSETS_DIR), name="assets")
     app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
     return app
+
+
+def _car_identity(car_code: int | None) -> dict[str, Any]:
+    """What the drivetrain table knows about the car currently being driven.
+
+    Surfaced so a driver can confirm the lookup actually resolved — an
+    unrecognised car silently falls back to the configured biases, which is
+    correct but indistinguishable from the routing working.
+    """
+    return {
+        "code": car_code,
+        "layout": drivetrain.layout_for(car_code),
+        "driven_axle": drivetrain.driven_axle(car_code),
+        "engine_position": drivetrain.engine_position(car_code),
+    }
 
 
 def _summarize_packet(p: TelemetryPacket | None) -> dict[str, Any] | None:
@@ -209,14 +238,19 @@ def _axle_diagnostics(
 ) -> dict[str, Any]:
     """Front/rear derived values plus the raw corner fields they came from.
 
-    Three protocol assumptions the two-channel stage will depend on have never
-    been checked against a console — wheel_rps units and sign, the FL/FR/RL/RR
-    corner order, and whether speed_mps is signed. Every consumer so far has
-    been an order-invariant max() of absolute values, which cannot detect any
-    of them being wrong. So this ships the *raw* per-corner numbers next to the
-    derived ones: a permuted corner mapping or a 2*pi units error is obvious
-    when you can read the four wheels individually against vehicle speed, and
-    invisible in the reductions alone.
+    This block exists because the reductions cannot show you what they threw
+    away. Reading it on a live rig settled two protocol questions in one
+    session (2026-08-05): wheel_rps is rad/s but sent negated, and the
+    FL/FR/RL/RR corner order does match the offsets — proved by a first-gear
+    launch, where only the driven axle outran the car.
+
+    Still unverified: whether speed_mps is signed in reverse. If it is an
+    unsigned magnitude, reversing reads as total lockup on all four corners.
+
+    So it keeps shipping the *raw* per-corner numbers next to the derived ones.
+    A permuted mapping or a units error is obvious when the four wheels can be
+    read individually against vehicle speed, and invisible in a max() of
+    absolute values.
 
     The legacy scalars ride along so drift between the old whole-car values and
     the new per-axle ones stays visible in one place.
@@ -236,9 +270,9 @@ def _axle_diagnostics(
             "tire_radius_FR": p.tire_radius_FR,
             "tire_radius_RL": p.tire_radius_RL,
             "tire_radius_RR": p.tire_radius_RR,
-            # rps * radius. Equals speed_mps at a steady cruise only if
-            # wheel_rps is rad/s; it reads 2*pi high if the field really is
-            # revolutions per second, as protocol.py's comment claims.
+            # rps * radius, after the parse-time sign normalization. Should
+            # equal speed_mps at a steady cruise; that it read -speed_mps is
+            # how the inverted sign was caught.
             "wheel_surface_speed_FL": p.wheel_rps_FL * p.tire_radius_FL,
             "wheel_surface_speed_FR": p.wheel_rps_FR * p.tire_radius_FR,
             "wheel_surface_speed_RL": p.wheel_rps_RL * p.tire_radius_RL,

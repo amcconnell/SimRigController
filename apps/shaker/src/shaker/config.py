@@ -30,6 +30,17 @@ class AudioConfig:
     sample_rate: int = 48000
     buffer_ms: int = 20
     master_gain: float = 0.6
+    # 1 = one mono channel, exactly as before two-channel support existed.
+    # 2 = channel 0 front, channel 1 rear. Opt-in rather than auto-probed:
+    # ALSA's "default" device happily accepts two channels whether or not
+    # anything is wired to the second one, so probing always "succeeds" and
+    # would silently send every rear-routed effect to a dead conductor.
+    output_channels: int = 1
+    # Corrects for the two shakers not being equally coupled to the driver —
+    # a seat transmits far more of what it is given than a pedal deck does.
+    # Hardware compensation, kept separate from the per-effect biases so those
+    # stay about placement rather than absorbing a rig quirk.
+    rear_gain_trim: float = 1.0
     vibration_enabled: bool = True
     vibration_gain: float = 1.0
     # SimHub-style response filter (input gain → threshold → min force → gamma).
@@ -52,22 +63,37 @@ class AudioConfig:
     # airborne buzz through the frame instead of felt motion.
     engine_rumble_min_hz: float = 26.0
     engine_rumble_max_hz: float = 100.0
+    # Engine and drivetrain thrum reaches a driver through the floor and seat
+    # rather than the pedals. Mild rear bias by default; the engine's real
+    # position is a per-car fact this app cannot yet read, so this is taste.
+    engine_rumble_bias: float = 0.3
     # Brake rumble: low-frequency hum while braking; amplitude scales with brake above threshold.
     brake_rumble_enabled: bool = True
     brake_rumble_gain: float = 1.0
     brake_rumble_freq_hz: float = 30.0
     brake_rumble_threshold_pct: float = 20.0
+    # Strongly front. Not a guess about weight transfer — pad judder, ABS
+    # pulsing and tyre scrub reach a real driver through the brake pedal, so
+    # with a pedal-deck shaker this reproduces the actual physical channel.
+    brake_rumble_bias: float = -0.7
     # Rev limiter: distinct buzz when engine_rpm / max_alert_rpm crosses trigger_pct.
     rev_limiter_enabled: bool = True
     rev_limiter_gain: float = 1.0
     rev_limiter_freq_hz: float = 75.0
     rev_limiter_trigger_pct: float = 95.0
+    # Centred, and it should stay there: rpm/max_alert_rpm is a scalar ratio
+    # with no spatial content at all. The control exists for taste, not physics.
+    rev_limiter_bias: float = 0.0
     # Wheel slip: buzz when any wheel speed diverges from vehicle speed (spin or lockup).
     wheel_slip_enabled: bool = True
     wheel_slip_gain: float = 1.0
     wheel_slip_freq_hz: float = 90.0
     wheel_slip_threshold_mps: float = 2.0
     wheel_slip_scale_mps: float = 5.0
+    # Lockup gets its own, lower voice. A locked tyre grinds; a spinning one
+    # scrabbles higher. Both clear the 30 Hz brake, 44 Hz gear-shift and 75 Hz
+    # limiter bands so a corner entry stays legible as separate events.
+    wheel_slip_lock_freq_hz: float = 65.0
     gear_shift_enabled: bool = True
     gear_shift_gain: float = 1.0
     gear_shift_freq_hz: float = 44.0
@@ -78,6 +104,14 @@ class AudioConfig:
     gear_shift_rpm_pct_high: float = 90.0
     gear_shift_min_gain_pct: float = 50.0
     gear_shift_max_gain_pct: float = 100.0
+    # Rear by default: driveline shock reacts through the driven axle, which is
+    # the rear on the majority of cars, and wrong for front-wheel drive.
+    gear_shift_bias: float = 0.5
+    # Let the car database decide *which end* the gear-shift and engine effects
+    # belong on, using the car code in the telemetry. The bias values above
+    # then set only how strongly, not where. An unknown car — or this switched
+    # off — falls back to the configured values exactly as written.
+    drivetrain_routing_enabled: bool = True
 
 
 @dataclass(frozen=True)
@@ -95,6 +129,10 @@ RESTART_REQUIRED_FIELDS: frozenset[str] = frozenset({
     "audio.device",
     "audio.sample_rate",
     "audio.buffer_ms",
+    # Channel count is fixed when the PortAudio stream is opened, exactly like
+    # sample rate and buffer size. Hot-swapping it would have the callback
+    # index a second column the open stream does not have.
+    "audio.output_channels",
 })
 
 

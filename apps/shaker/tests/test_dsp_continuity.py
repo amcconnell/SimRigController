@@ -63,9 +63,9 @@ def test_wheel_slip_release_is_continuous() -> None:
     for n in PHASE_SWEEP:
         s = WheelSlip(SR)
         for _ in range(60):
-            prev = s.process(n, slip_magnitude=8.0, gain=1.0, enabled=True,
+            prev = s.process(n, slip=8.0, gain=1.0, enabled=True,
                              freq_hz=90.0, threshold_mps=2.0, scale_mps=5.0).copy()
-        nxt = s.process(n, slip_magnitude=0.0, gain=1.0, enabled=True,
+        nxt = s.process(n, slip=0.0, gain=1.0, enabled=True,
                         freq_hz=90.0, threshold_mps=2.0, scale_mps=5.0)
         worst = max(worst, _seam(prev, nxt))
     assert worst < MAX_SEAM_STEP, f"slip release steps {worst:.4f} full-scale"
@@ -126,7 +126,7 @@ def test_disable_mid_effect_is_continuous() -> None:
     """Toggling an effect off in the UI must not click either."""
     for cls, kwargs in (
         (BrakeRumble, dict(brake=220, freq_hz=30.0, threshold_pct=20.0)),
-        (WheelSlip, dict(slip_magnitude=8.0, freq_hz=90.0, threshold_mps=2.0, scale_mps=5.0)),
+        (WheelSlip, dict(slip=8.0, freq_hz=90.0, threshold_mps=2.0, scale_mps=5.0)),
         (RevLimiter, dict(rpm_pct=0.99, freq_hz=78.0, trigger_pct=95.0)),
     ):
         fx = cls(SR)

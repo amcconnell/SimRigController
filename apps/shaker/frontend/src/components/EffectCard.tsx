@@ -9,6 +9,10 @@ interface EffectCardProps {
   gain: number;
   onEnabledChange: (value: boolean) => void;
   onGainChange: (value: number) => void;
+  /** Front/rear placement, -1..+1. Omit on a single-channel rig. */
+  bias?: number;
+  onBiasChange?: (value: number) => void;
+  biasHint?: string;
   testButton?: ReactNode;
   /** Detailed knobs shown when expanded. */
   children: ReactNode;
@@ -21,6 +25,9 @@ export function EffectCard({
   gain,
   onEnabledChange,
   onGainChange,
+  bias,
+  onBiasChange,
+  biasHint,
   testButton,
   children,
 }: EffectCardProps) {
@@ -48,6 +55,17 @@ export function EffectCard({
         <BoolField label="Enabled" value={enabled} onChange={onEnabledChange} />
         <NumberField label="Gain" value={gain} step={0.05} min={0} max={4} onChange={onGainChange}
           hint="Overall output level for this effect, multiplied by the master gain at the end of the mix." />
+        {bias !== undefined && onBiasChange && (
+          <NumberField
+            label="Front ← → Rear"
+            value={bias}
+            step={0.05}
+            min={-1}
+            max={1}
+            onChange={onBiasChange}
+            hint={biasHint ?? "-1 sends this effect entirely to the front shaker, +1 entirely to the rear, 0 splits it evenly."}
+          />
+        )}
       </div>
 
       {expanded && (
