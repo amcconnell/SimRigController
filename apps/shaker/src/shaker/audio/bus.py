@@ -79,7 +79,7 @@ class AudioBus:
     def __init__(self, audio_config: AudioConfig) -> None:
         self.audio_config: AudioConfig = audio_config
         self.features: TelemetryFeatures = TelemetryFeatures()
-        # Monotonically incremented when the gear changes upward in a sane range.
+        # Incremented on any change between two engaged gears — up or down.
         self.gear_shift_count: int = 0
         # System-wide mute. In-memory only — doesn't persist across restarts
         # (intentional: "I muted to take a call" shouldn't pollute config).

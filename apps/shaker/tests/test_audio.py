@@ -40,18 +40,67 @@ def test_vibration_produces_audio_when_activity_present() -> None:
     assert np.max(np.abs(out)) > 0.01
 
 
-def test_vibration_high_band_adds_energy_at_speed() -> None:
-    """High-speed playback should sum more amplitude than low-speed at the same activity."""
-    v_slow = RoadVibration(48000)
-    v_fast = RoadVibration(48000)
-    # Warm up the smoothers identically with activity but different speeds.
-    for _ in range(40):
-        slow = v_slow.process(480, activity=0.01, gain=1.0, enabled=True,
-                              speed_mps=0.0, speed_blend_low_mps=20.0, speed_blend_high_mps=50.0)
-        fast = v_fast.process(480, activity=0.01, gain=1.0, enabled=True,
-                              speed_mps=80.0, speed_blend_low_mps=20.0, speed_blend_high_mps=50.0)
-    # The fast variant gets the high band fully blended in, so RMS should be higher.
-    assert float(np.sqrt(np.mean(fast ** 2))) > float(np.sqrt(np.mean(slow ** 2)))
+def _centroid(x: np.ndarray, sample_rate: int = 48000, lo: float = 10.0, hi: float = 200.0) -> float:
+    """Power-weighted spectral centroid over the band a shaker can render.
+
+    Weighted by power and band-limited on purpose. A magnitude-weighted
+    centroid over the full spectrum is dominated by the float32 noise floor
+    spread across ~46k bins and reports ~2 kHz for signal that is entirely
+    between 44 and 80 Hz — it counts bins, not energy.
+    """
+    power = np.abs(np.fft.rfft(x)) ** 2
+    freqs = np.fft.rfftfreq(len(x), 1.0 / sample_rate)
+    band = (freqs >= lo) & (freqs <= hi)
+    return float((freqs[band] * power[band]).sum() / power[band].sum())
+
+
+def _render_vibration(speed_mps: float) -> np.ndarray:
+    """Render exactly one full pass of the 10 s noise loop, past the transient.
+
+    The measurement window has to span the whole loop. The low band is only
+    6 Hz wide, so its envelope decorrelates in ~170 ms and any shorter window
+    holds too few independent samples for a stable RMS — a 1.5 s window swings
+    +/-30% purely on which part of the loop it caught.
+    """
+    settle, loop = 50, 500  # blocks of 960: 500 * 960 == 480000 == 10 s @ 48 kHz
+    v = RoadVibration(48000)
+    rendered = [
+        v.process(960, activity=0.01, gain=1.0, enabled=True, speed_mps=speed_mps,
+                  speed_blend_low_mps=20.0, speed_blend_high_mps=50.0).copy()
+        for _ in range(settle + loop)
+    ]
+    return np.concatenate(rendered[settle:])
+
+
+def test_vibration_speed_blend_shifts_spectrum_not_level() -> None:
+    """Speed should make the road bed *sharper*, not louder.
+
+    The two noise bands are equal-RMS and equal-power crossfaded, so blending
+    the high band in raises the spectral centroid while holding the level.
+    (Summing two peak-normalized bands, as this once did, instead raised RMS by
+    2.4 dB and the peak to 1.537 — crossing the blend threshold just got louder.)
+    """
+    slow = _render_vibration(0.0)
+    fast = _render_vibration(80.0)
+
+    assert _centroid(fast) > _centroid(slow) + 15.0  # measured ~47 -> ~70 Hz
+    slow_rms = float(np.sqrt(np.mean(slow ** 2)))
+    fast_rms = float(np.sqrt(np.mean(fast ** 2)))
+    assert fast_rms == pytest.approx(slow_rms, rel=0.1)  # level held, not raised
+
+
+def test_vibration_speed_blend_has_no_midpoint_hole() -> None:
+    """Equal-power crossfade: no level dip halfway through the blend.
+
+    The bands are independent noise over disjoint spectra, so they sum in
+    power. Linear crossfade weights would cut RMS by 3 dB at the midpoint —
+    right in the speed range the blend exists to cover.
+    """
+    slow, mid = _render_vibration(0.0), _render_vibration(35.0)
+    slow_rms = float(np.sqrt(np.mean(slow ** 2)))
+    mid_rms = float(np.sqrt(np.mean(mid ** 2)))
+    assert mid_rms == pytest.approx(slow_rms, rel=0.1), f"midpoint hole: {mid_rms} vs {slow_rms}"
+    assert _centroid(mid) > _centroid(slow) + 5.0
 
 
 def test_vibration_disabled_yields_silence() -> None:
