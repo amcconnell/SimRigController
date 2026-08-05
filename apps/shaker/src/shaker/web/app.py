@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from shaker import config as cfg_mod
 from shaker import profiles as profiles_mod
-from shaker.audio.bus import AudioBus
+from shaker.audio.bus import AudioBus, TelemetryFeatures
 from shaker.config import Config
 from shaker.gt7.client import GT7Client
 from shaker.gt7.protocol import TelemetryPacket
@@ -143,6 +143,7 @@ def create_app(
             "gt7": asdict(gt7.status()),
             "telemetry": _summarize_packet(gt7.latest_packet),
             "muted": bus.muted,
+            "axle": _axle_diagnostics(bus.features, gt7.latest_packet),
         }
 
     @app.post("/api/test/vibration")
@@ -200,4 +201,60 @@ def _summarize_packet(p: TelemetryPacket | None) -> dict[str, Any] | None:
         "current_gear": p.current_gear,
         "lap_count": p.lap_count,
         "packet_id": p.packet_id,
+    }
+
+
+def _axle_diagnostics(
+    f: TelemetryFeatures, p: TelemetryPacket | None
+) -> dict[str, Any]:
+    """Front/rear derived values plus the raw corner fields they came from.
+
+    Three protocol assumptions the two-channel stage will depend on have never
+    been checked against a console — wheel_rps units and sign, the FL/FR/RL/RR
+    corner order, and whether speed_mps is signed. Every consumer so far has
+    been an order-invariant max() of absolute values, which cannot detect any
+    of them being wrong. So this ships the *raw* per-corner numbers next to the
+    derived ones: a permuted corner mapping or a 2*pi units error is obvious
+    when you can read the four wheels individually against vehicle speed, and
+    invisible in the reductions alone.
+
+    The legacy scalars ride along so drift between the old whole-car values and
+    the new per-axle ones stays visible in one place.
+    """
+    raw: dict[str, Any] | None = None
+    if p is not None:
+        raw = {
+            # The reference the wheel speeds are compared against. Watch this
+            # against wheel_surface_speed_* at a steady cruise.
+            "speed_mps": p.speed_mps,
+            "current_gear": p.current_gear,
+            "wheel_rps_FL": p.wheel_rps_FL,
+            "wheel_rps_FR": p.wheel_rps_FR,
+            "wheel_rps_RL": p.wheel_rps_RL,
+            "wheel_rps_RR": p.wheel_rps_RR,
+            "tire_radius_FL": p.tire_radius_FL,
+            "tire_radius_FR": p.tire_radius_FR,
+            "tire_radius_RL": p.tire_radius_RL,
+            "tire_radius_RR": p.tire_radius_RR,
+            # rps * radius. Equals speed_mps at a steady cruise only if
+            # wheel_rps is rad/s; it reads 2*pi high if the field really is
+            # revolutions per second, as protocol.py's comment claims.
+            "wheel_surface_speed_FL": p.wheel_rps_FL * p.tire_radius_FL,
+            "wheel_surface_speed_FR": p.wheel_rps_FR * p.tire_radius_FR,
+            "wheel_surface_speed_RL": p.wheel_rps_RL * p.tire_radius_RL,
+            "wheel_surface_speed_RR": p.wheel_rps_RR * p.tire_radius_RR,
+            "suspension_FL": p.suspension_FL,
+            "suspension_FR": p.suspension_FR,
+            "suspension_RL": p.suspension_RL,
+            "suspension_RR": p.suspension_RR,
+        }
+    return {
+        "slip_front": f.slip_front,
+        "slip_rear": f.slip_rear,
+        "suspension_activity_front": f.suspension_activity_front,
+        "suspension_activity_rear": f.suspension_activity_rear,
+        # Legacy whole-car scalars — the ones the audio path actually reads.
+        "slip_magnitude": f.slip_magnitude,
+        "suspension_activity": f.suspension_activity,
+        "raw": raw,
     }

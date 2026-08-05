@@ -39,6 +39,21 @@ _TEST_VIBRATION_ACTIVITY = 0.005
 _FREEZE_RESET_FRAMES = 30
 
 
+def _activity_envelope(prev: float, bump: float) -> float:
+    """One step of the asymmetric attack/decay envelope on a post-HPF bump level.
+
+    Stateful *and* asymmetric, which is why every axle carries its own `prev`
+    rather than being derived from the whole-car value. Attack/decay does not
+    commute with max(): on alternating-corner input (a ripple strip hits FL,
+    then RR, then FL...) the whole-car envelope attacks on every frame while
+    each axle's envelope decays on the frames its own corners are quiet, so
+    max(env_front, env_rear) != env(max(all four)).
+    """
+    if bump > prev:
+        return _ACTIVITY_ATTACK * bump + (1 - _ACTIVITY_ATTACK) * prev
+    return _ACTIVITY_DECAY * prev
+
+
 @dataclass
 class _OnePoleHPF:
     """Single-pole high-pass. y[n] = a * (y[n-1] + x[n] - x[n-1])."""
@@ -72,6 +87,36 @@ class TelemetryFeatures:
     slip_magnitude: float = 0.0
     lap_count: int = 0
 
+    # --- Per-axle split (front = pedal-deck shaker, rear = seat shaker) -------
+    # Diagnostics only for now: nothing on the audio path reads these yet. They
+    # exist so the per-corner mapping and units the two-channel stage depends on
+    # can be checked against a real console instead of assumed.
+
+    # Same units and treatment as `suspension_activity` above (max of the
+    # high-passed corners on that axle, through the same asymmetric envelope),
+    # but reduced over FL/FR and RL/RR instead of all four. Each carries its own
+    # envelope state — see _activity_envelope for why they cannot be rebuilt
+    # from the whole-car value.
+    suspension_activity_front: float = 0.0
+    suspension_activity_rear: float = 0.0
+
+    # SIGNED wheel-vs-vehicle speed mismatch in m/s, per axle:
+    #   positive => wheel surface is faster than the car (wheelspin)
+    #   negative => wheel surface is slower than the car (lockup)
+    # Reduced per axle by the corner with the largest |value|, keeping its sign.
+    # `slip_magnitude` above throws that sign away, so it cannot tell a locked
+    # wheel from a spinning one; these can.
+    #
+    # Both depend on assumptions that are UNVERIFIED against a real console:
+    # that `wheel_rps * tire_radius` really is a surface speed in m/s (i.e. that
+    # wheel_rps is rad/s despite the protocol.py comment saying rev/s), and that
+    # speed_mps is signed. If wheel_rps is genuinely rev/s these read 2*pi too
+    # large; if speed_mps is an unsigned magnitude, reversing reads as total
+    # lockup. Exposed over /api/status precisely so both can be settled by
+    # driving. Nothing audible depends on them until that is done.
+    slip_front: float = 0.0
+    slip_rear: float = 0.0
+
 
 class AudioBus:
     """Lockless shared state owned by the audio thread but written from asyncio."""
@@ -90,6 +135,11 @@ class AudioBus:
         self._hpf_FR = _OnePoleHPF()
         self._hpf_RL = _OnePoleHPF()
         self._hpf_RR = _OnePoleHPF()
+        # Per-axle envelope accumulators. Separate state, not a view of
+        # `features`, because an envelope is only correct if it sees every
+        # frame of its own axle — see _activity_envelope.
+        self._activity_front: float = 0.0
+        self._activity_rear: float = 0.0
         self._last_gear: int | None = None
         self._freeze_key: tuple | None = None
         self._freeze_count: int = 0
@@ -132,6 +182,8 @@ class AudioBus:
         self.features = TelemetryFeatures()
         for f in (self._hpf_FL, self._hpf_FR, self._hpf_RL, self._hpf_RR):
             f.reset()
+        self._activity_front = 0.0
+        self._activity_rear = 0.0
         self._last_gear = None
 
     def current_vibration_activity(self) -> float:
@@ -240,27 +292,40 @@ class AudioBus:
         fr = self._hpf_FR.step(p.suspension_FR)
         rl = self._hpf_RL.step(p.suspension_RL)
         rr = self._hpf_RR.step(p.suspension_RR)
-        # Max across corners — preserves single-wheel hits the average would smear.
-        bump = max(abs(fl), abs(fr), abs(rl), abs(rr))
+        # Per-axle maxima, for the pedal-deck and seat shakers respectively.
+        bump_front = max(abs(fl), abs(fr))
+        bump_rear = max(abs(rl), abs(rr))
+        # Max across corners — preserves single-wheel hits the average would
+        # smear. Taken over the pre-envelope bump levels, so it is the same
+        # number the four-corner max has always produced; the *envelopes* below
+        # are run independently and never combined back into this one.
+        bump = max(bump_front, bump_rear)
 
-        prev = self.features.suspension_activity
-        if bump > prev:
-            new = _ACTIVITY_ATTACK * bump + (1 - _ACTIVITY_ATTACK) * prev
-        else:
-            new = _ACTIVITY_DECAY * prev
+        new = _activity_envelope(self.features.suspension_activity, bump)
+        self._activity_front = _activity_envelope(self._activity_front, bump_front)
+        self._activity_rear = _activity_envelope(self._activity_rear, bump_rear)
 
         rpm_pct = 0.0
         if p.max_alert_rpm > 0:
             rpm_pct = max(0.0, min(1.0, p.engine_rpm / p.max_alert_rpm))
 
         # Per-corner slip = wheel rim speed (rps × radius) − vehicle speed.
+        # Signed: positive is the wheel outrunning the car (spin), negative is
+        # the car outrunning the wheel (lockup).
+        slip_FL = p.wheel_rps_FL * p.tire_radius_FL - p.speed_mps
+        slip_FR = p.wheel_rps_FR * p.tire_radius_FR - p.speed_mps
+        slip_RL = p.wheel_rps_RL * p.tire_radius_RL - p.speed_mps
+        slip_RR = p.wheel_rps_RR * p.tire_radius_RR - p.speed_mps
+
         # Take the max absolute across corners as the headline magnitude.
-        slip_magnitude = max(
-            abs(p.wheel_rps_FL * p.tire_radius_FL - p.speed_mps),
-            abs(p.wheel_rps_FR * p.tire_radius_FR - p.speed_mps),
-            abs(p.wheel_rps_RL * p.tire_radius_RL - p.speed_mps),
-            abs(p.wheel_rps_RR * p.tire_radius_RR - p.speed_mps),
-        )
+        slip_magnitude = max(abs(slip_FL), abs(slip_FR), abs(slip_RL), abs(slip_RR))
+        # Per axle: the corner that is misbehaving most, with its sign intact.
+        # `key=abs` rather than abs() on the result — a locked front wheel and a
+        # spinning one are opposite events that want opposite responses, and the
+        # magnitude alone cannot tell them apart. Ties keep the left corner,
+        # which only matters when the two are exact mirror images.
+        slip_front = max((slip_FL, slip_FR), key=abs)
+        slip_rear = max((slip_RL, slip_RR), key=abs)
 
         # Replace the dataclass atomically (single ref assignment).
         self.features = TelemetryFeatures(
@@ -272,6 +337,10 @@ class AudioBus:
             brake=p.brake,
             slip_magnitude=slip_magnitude,
             lap_count=p.lap_count,
+            suspension_activity_front=self._activity_front,
+            suspension_activity_rear=self._activity_rear,
+            slip_front=slip_front,
+            slip_rear=slip_rear,
         )
 
         # Detect gear changes between any engaged gears (forward 1..8, reverse 15).

@@ -88,10 +88,51 @@ export interface TelemetrySummary {
   packet_id: number;
 }
 
+// Raw per-corner fields straight off the latest packet, plus the two values
+// they are read against. Mirrors _axle_diagnostics()["raw"] in web/app.py.
+// Null until the first packet arrives.
+export interface AxleRawStatus {
+  speed_mps: number;
+  current_gear: number;
+  wheel_rps_FL: number;
+  wheel_rps_FR: number;
+  wheel_rps_RL: number;
+  wheel_rps_RR: number;
+  tire_radius_FL: number;
+  tire_radius_FR: number;
+  tire_radius_RL: number;
+  tire_radius_RR: number;
+  // rps * radius — compare against speed_mps at a steady cruise.
+  wheel_surface_speed_FL: number;
+  wheel_surface_speed_FR: number;
+  wheel_surface_speed_RL: number;
+  wheel_surface_speed_RR: number;
+  suspension_FL: number;
+  suspension_FR: number;
+  suspension_RL: number;
+  suspension_RR: number;
+}
+
+// Mirrors _axle_diagnostics() in web/app.py. Diagnostics only — nothing here
+// is configurable, and nothing on the audio path reads the per-axle values yet.
+export interface AxleStatus {
+  // SIGNED m/s: positive = wheel faster than the car (spin), negative = slower
+  // (lockup). Per axle, the corner with the largest magnitude keeps its sign.
+  slip_front: number;
+  slip_rear: number;
+  suspension_activity_front: number;
+  suspension_activity_rear: number;
+  // Legacy whole-car scalars, kept visible so drift from the new values shows.
+  slip_magnitude: number;
+  suspension_activity: number;
+  raw: AxleRawStatus | null;
+}
+
 export interface Status {
   gt7: GT7Status;
   telemetry: TelemetrySummary | null;
   muted: boolean;
+  axle: AxleStatus;
 }
 
 export interface ProfilesState {

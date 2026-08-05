@@ -16,6 +16,7 @@ import { TestButton } from "./components/TestButton";
 import { NumberField, TextField } from "./components/ConfigField";
 import { ProfileSelector } from "./components/ProfileSelector";
 import { MuteButton } from "./components/MuteButton";
+import { AxlePanel } from "./components/AxlePanel";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -128,6 +129,11 @@ export function App() {
             )}
           </div>
         )}
+
+        {/* Read-only, and deliberately outside the config fieldset: it stays
+            live and undimmed on the read-only default profile, which is what
+            you are on while checking telemetry against a real console. */}
+        <AxlePanel axle={status?.axle} />
 
         <fieldset disabled={isDefaultProfile} className="space-y-6 disabled:opacity-60">
 
