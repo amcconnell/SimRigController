@@ -107,6 +107,10 @@ When it finishes, open **http://simrig-pi.local** on any LAN device.
 3. The default profile is read-only — click **+ New** to create a tunable profile.
 4. Drag sliders to taste; changes save automatically (~300 ms debounce).
 5. The test buttons at the top of each effect fire a synthetic input so you can verify the audio path without driving — useful for setting a baseline gain.
+6. On two channels, run **Test wiring** first — it pulses the front shaker, pauses, then the
+   rear, bypassing every effect. Nothing in software can detect reversed speaker leads, and a
+   swapped pair inverts every routing decision in a way that reads as "feels subtly wrong"
+   rather than as a fault.
 
 **Profiles** are named snapshots of the audio config. The built-in `default` profile lives in code and can't be edited or deleted. Use profiles to keep separate tunings per car or per driver — switching activates a profile's settings instantly (the service restarts only if you change the audio device, sample rate, or buffer size).
 

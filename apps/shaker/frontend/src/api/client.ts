@@ -34,7 +34,8 @@ export type TestName =
   | "engine_sweep"
   | "brake_rumble"
   | "rev_limiter"
-  | "wheel_slip";
+  | "wheel_slip"
+  | "wiring";
 
 export async function runTest(name: TestName): Promise<void> {
   await jsonFetch<unknown>(`/api/test/${name}`, { method: "POST" });

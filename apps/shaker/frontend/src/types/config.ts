@@ -17,6 +17,8 @@ export interface AudioConfig {
   sample_rate: number;
   buffer_ms: number;
   master_gain: number;
+  output_channels: number;
+  rear_gain_trim: number;
 
   vibration_enabled: boolean;
   vibration_gain: number;
@@ -32,22 +34,26 @@ export interface AudioConfig {
   engine_rumble_rpm_divisor: number;
   engine_rumble_min_hz: number;
   engine_rumble_max_hz: number;
+  engine_rumble_bias: number;
 
   brake_rumble_enabled: boolean;
   brake_rumble_gain: number;
   brake_rumble_freq_hz: number;
   brake_rumble_threshold_pct: number;
+  brake_rumble_bias: number;
 
   rev_limiter_enabled: boolean;
   rev_limiter_gain: number;
   rev_limiter_freq_hz: number;
   rev_limiter_trigger_pct: number;
+  rev_limiter_bias: number;
 
   wheel_slip_enabled: boolean;
   wheel_slip_gain: number;
   wheel_slip_freq_hz: number;
   wheel_slip_threshold_mps: number;
   wheel_slip_scale_mps: number;
+  wheel_slip_lock_freq_hz: number;
 
   gear_shift_enabled: boolean;
   gear_shift_gain: number;
@@ -57,6 +63,7 @@ export interface AudioConfig {
   gear_shift_rpm_pct_high: number;
   gear_shift_min_gain_pct: number;
   gear_shift_max_gain_pct: number;
+  gear_shift_bias: number;
 }
 
 export interface Config {

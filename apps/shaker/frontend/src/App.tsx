@@ -105,6 +105,9 @@ export function App() {
 
   const A = config.audio;
   const isDefaultProfile = profiles?.active === DEFAULT_PROFILE_NAME;
+  // Placement controls only exist on a two-channel rig; on one channel they
+  // would be knobs that provably do nothing.
+  const stereo = A.output_channels === 2;
 
   return (
     <>
@@ -148,7 +151,22 @@ export function App() {
               hint="Audio sample rate in Hz. 48000 is standard. Changing this restarts the audio stream." />
             <NumberField label="Buffer" unit="ms" value={A.buffer_ms} step={1} min={1} max={200} onChange={a("buffer_ms")}
               hint="Audio callback buffer length. Smaller = lower latency but more CPU and risk of underruns. Restart-required." />
+            <NumberField label="Output channels" value={A.output_channels} step={1} min={1} max={2} onChange={a("output_channels")}
+              hint="1 = single mono output, exactly as before. 2 = left drives the front shaker, right drives the rear. Needs two amp channels actually wired — nothing can detect that for you, so run the wiring check after switching. Restart-required." />
+            {stereo && (
+              <NumberField label="Rear trim" value={A.rear_gain_trim} step={0.05} min={0} max={2} onChange={a("rear_gain_trim")}
+                hint="Level correction for the rear shaker only. A seat transmits far more of what it is given than a pedal deck does, so equal electrical power will not feel equal — fix that here and leave the per-effect placement sliders for taste." />
+            )}
           </div>
+          {stereo && (
+            <div className="mt-3 flex items-center gap-3 border-t border-zinc-800 pt-3">
+              <TestButton label="wiring" test="wiring" />
+              <p className="text-xs text-zinc-500">
+                Pulses front, pauses, then pulses rear — bypassing every effect. If the order is
+                reversed, swap the speaker leads at the amp rather than inverting the sliders.
+              </p>
+            </div>
+          )}
         </section>
 
         <div className="space-y-3">
@@ -186,6 +204,9 @@ export function App() {
             gain={A.engine_rumble_gain}
             onEnabledChange={a("engine_rumble_enabled")}
             onGainChange={a("engine_rumble_gain")}
+            bias={stereo ? A.engine_rumble_bias : undefined}
+            onBiasChange={a("engine_rumble_bias")}
+            biasHint="Taste, not physics — GT7 sends no engine-position field, so this cannot be derived per car. Mild rear by default because engine and drivetrain thrum reaches a driver through the floor and seat rather than the pedals."
             testButton={<TestButton label="sweep" test="engine_sweep" variant="header" />}
           >
             <NumberField label="RPM divisor" value={A.engine_rumble_rpm_divisor} step={5} min={10} max={240} onChange={a("engine_rumble_rpm_divisor")}
@@ -205,6 +226,9 @@ export function App() {
             gain={A.brake_rumble_gain}
             onEnabledChange={a("brake_rumble_enabled")}
             onGainChange={a("brake_rumble_gain")}
+            bias={stereo ? A.brake_rumble_bias : undefined}
+            onBiasChange={a("brake_rumble_bias")}
+            biasHint="Strongly front, and this one is physical: pad judder, ABS pulsing and tyre scrub reach a real driver through the brake pedal, so a pedal-deck shaker reproduces the actual channel rather than approximating it."
             testButton={<TestButton label="brake" test="brake_rumble" variant="header" />}
           >
             <NumberField label="Frequency" unit="Hz" value={A.brake_rumble_freq_hz} step={1} min={10} max={200} onChange={a("brake_rumble_freq_hz")}
@@ -220,6 +244,9 @@ export function App() {
             gain={A.rev_limiter_gain}
             onEnabledChange={a("rev_limiter_enabled")}
             onGainChange={a("rev_limiter_gain")}
+            bias={stereo ? A.rev_limiter_bias : undefined}
+            onBiasChange={a("rev_limiter_bias")}
+            biasHint="Centred, and it should probably stay there — RPM over redline is a scalar ratio with no spatial content, so placing it anywhere in particular is inventing information."
             testButton={<TestButton label="rev limit" test="rev_limiter" variant="header" />}
           >
             <NumberField label="Frequency" unit="Hz" value={A.rev_limiter_freq_hz} step={1} min={10} max={200} onChange={a("rev_limiter_freq_hz")}
@@ -241,6 +268,8 @@ export function App() {
               hint="Sharper than engine/brake bands so spin and lockup feel like a distinct signal." />
             <NumberField label="Threshold" unit="m/s" value={A.wheel_slip_threshold_mps} step={0.1} min={0} max={20} onChange={a("wheel_slip_threshold_mps")}
               hint="Per-corner |wheel_rps × tire_radius − speed| below this is ignored. 2 m/s catches significant spin/lock without firing on normal grip events." />
+            <NumberField label="Lockup frequency" unit="Hz" value={A.wheel_slip_lock_freq_hz} step={1} min={10} max={200} onChange={a("wheel_slip_lock_freq_hz")}
+              hint="Locking wheels get their own, lower voice than spinning ones — a locked tyre grinds where a spinning one scrabbles. On two channels the axle that slipped picks the shaker, so a front lockup and a rear break-away become two distinct events instead of one buzz." />
             <NumberField label="Scale" unit="m/s" value={A.wheel_slip_scale_mps} step={0.5} min={0.5} max={30} onChange={a("wheel_slip_scale_mps")}
               hint="Slip above threshold ramps to full amplitude over this range. 5 m/s = full effect at threshold + 5 m/s." />
           </EffectCard>
@@ -252,6 +281,9 @@ export function App() {
             gain={A.gear_shift_gain}
             onEnabledChange={a("gear_shift_enabled")}
             onGainChange={a("gear_shift_gain")}
+            bias={stereo ? A.gear_shift_bias : undefined}
+            onBiasChange={a("gear_shift_bias")}
+            biasHint="Driveline shock reacts through the driven axle — rear for most cars, but wrong for front-wheel drive. Set it per profile until the car database can supply it automatically."
             testButton={<TestButton label="shift" test="gear_shift" variant="header" />}
           >
             <NumberField label="Frequency" unit="Hz" value={A.gear_shift_freq_hz} step={1} min={10} max={200} onChange={a("gear_shift_freq_hz")}

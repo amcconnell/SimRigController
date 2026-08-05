@@ -13,6 +13,7 @@ through the rig frame* rather than felt motion:
 
 from __future__ import annotations
 
+import functools
 import math
 
 import numpy as np
@@ -151,11 +152,17 @@ def gear_shift_rpm_factor(
     return min_gain + (max_gain - min_gain) * t
 
 
+@functools.lru_cache(maxsize=8)
 def _bandpass_noise(sample_rate: int, duration_s: float, low_hz: float, high_hz: float, seed: int) -> np.ndarray:
     """FFT-based bandpass noise: white -> rfft -> zero out-of-band bins -> irfft.
 
     Normalized to a fixed RMS rather than a fixed peak, so bands of different
     widths carry equal energy and can be crossfaded without a level jump.
+
+    Cached and returned read-only: a two-channel rig builds a second
+    RoadVibration voice with identical parameters, and each 10 s band is 1.9 MB.
+    Sharing them keeps that at 3.8 MB total rather than 7.7 MB on a Pi, and the
+    voices stay independent through their own cursors, not their own copies.
     """
     n = int(sample_rate * duration_s)
     rng = np.random.default_rng(seed)
@@ -167,6 +174,7 @@ def _bandpass_noise(sample_rate: int, duration_s: float, low_hz: float, high_hz:
     rms = float(np.sqrt(np.mean(out ** 2)))
     if rms > 0:
         out *= _VIB_BAND_RMS / rms
+    out.flags.writeable = False  # shared between voices; nobody may mutate it
     return out
 
 
@@ -177,7 +185,7 @@ class RoadVibration:
     frequency), and a high band whose contribution scales with vehicle speed.
     """
 
-    def __init__(self, sample_rate: int) -> None:
+    def __init__(self, sample_rate: int, cursor_offset_s: float = 0.0) -> None:
         self.sr = sample_rate
         self._noise_low = _bandpass_noise(
             sample_rate, _VIB_NOISE_DURATION_S,
@@ -187,7 +195,13 @@ class RoadVibration:
             sample_rate, _VIB_NOISE_DURATION_S,
             _VIB_HIGH_BAND_FREQ_LOW_HZ, _VIB_HIGH_BAND_FREQ_HIGH_HZ, seed=2,
         )
-        self._cursor = 0
+        # A second voice reads the same buffers from a different point so the
+        # two channels are decorrelated. Not for localization — amplitude
+        # panning handles that fine at these frequencies — but because driving
+        # both ends of a rig with the identical waveform preferentially excites
+        # the frame's bounce mode and starves the pitch mode, which is the one
+        # that actually carries front-versus-rear.
+        self._cursor = int(sample_rate * cursor_offset_s) % self._noise_low.size
         self._amp = 0.0
         self._high_blend = 0.0
 
@@ -343,26 +357,56 @@ class RevLimiter(_ToneEffect):
         return self._step(n_frames, target, freq_hz)
 
 
+# Slip has to clear threshold by this much before the voice commits to
+# "spinning" or "locked". In a loaded corner the two wheels of one axle can sit
+# at near-equal opposite signs, and the axle reduction then alternates sign
+# packet to packet — without a margin the tone would warble at up to 60 Hz.
+_SLIP_SIGN_MARGIN_MPS = 0.5
+
+
 class WheelSlip(_ToneEffect):
-    """Buzz triggered by wheelspin or lockup (any wheel's speed diverging from the car's)."""
+    """Buzz triggered by wheelspin or lockup (a wheel's speed diverging from the car's).
+
+    Accepts a *signed* slip when the caller has one: positive means the wheel
+    is outrunning the car (spin), negative means it is dragging (lockup). Those
+    are opposite corrections — off the throttle versus off the brake — so each
+    gets its own frequency. Passing an unsigned magnitude with `lock_freq_hz`
+    left at 0 reproduces the single-voice behaviour exactly.
+    """
 
     _tau_s = _TAU_SLIP_S
+
+    def __init__(self, sample_rate: int) -> None:
+        super().__init__(sample_rate)
+        self._locked = False
 
     def process(
         self,
         n_frames: int,
-        slip_magnitude: float,
+        slip: float,
         gain: float,
         enabled: bool,
         freq_hz: float,
         threshold_mps: float,
         scale_mps: float,
+        lock_freq_hz: float = 0.0,
     ) -> np.ndarray:
+        magnitude = abs(slip)
         target = 0.0
-        if enabled and freq_hz > 0 and scale_mps > 0 and slip_magnitude > threshold_mps:
-            normalized = min(1.0, (slip_magnitude - threshold_mps) / scale_mps)
-            target = normalized * gain
-        return self._step(n_frames, target, freq_hz)
+        if enabled and freq_hz > 0 and scale_mps > 0 and magnitude > threshold_mps:
+            target = min(1.0, (magnitude - threshold_mps) / scale_mps) * gain
+
+        # Only commit to a character once clearly past the threshold; otherwise
+        # hold whatever it was. Phase is continuous across a switch, so the
+        # change reads as a pitch shift rather than a click.
+        margin = threshold_mps + _SLIP_SIGN_MARGIN_MPS
+        if slip < -margin:
+            self._locked = True
+        elif slip > margin:
+            self._locked = False
+
+        freq = lock_freq_hz if (self._locked and lock_freq_hz > 0) else freq_hz
+        return self._step(n_frames, target, freq)
 
 
 class GearShift:

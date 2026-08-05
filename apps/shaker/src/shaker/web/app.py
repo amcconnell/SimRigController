@@ -176,6 +176,18 @@ def create_app(
         bus.trigger_test_wheel_slip(duration_s=2.0, peak_slip_mps=7.0)
         return {"ok": True, "duration_s": 2.0}
 
+    @app.post("/api/test/wiring")
+    def test_wiring() -> dict[str, Any]:
+        """Pulse front, pause, pulse rear — bypassing the whole mix.
+
+        The one question no amount of software can answer for itself: are the
+        amp channels the way round the app assumes? A reversed pair inverts
+        every routing decision and reads as "this feels subtly wrong" rather
+        than as a bug, so it needs a deliberate check.
+        """
+        bus.trigger_wiring_check(pulse_s=1.0, gap_s=0.5)
+        return {"ok": True, "pulse_s": 1.0, "gap_s": 0.5, "total_s": 2.5}
+
     @app.get("/")
     def index() -> FileResponse:
         return FileResponse(_STATIC_DIR / "index.html")
