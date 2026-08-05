@@ -383,3 +383,69 @@ def test_typescript_axle_interfaces_match_the_status_payload() -> None:
         body = re.search(rf"export interface {interface} \{{(.*?)\n\}}", types_ts, re.S)
         assert body, f"could not find the {interface} interface"
         assert set(re.findall(r"^\s*(\w+)\??:", body.group(1), re.M)) == expected, interface
+
+
+# --- Body motion diagnostics -------------------------------------------------
+
+
+def test_motion_fields_need_the_longer_packet() -> None:
+    """sway/heave/surge live past the base layout. GT7 locks the format to
+    whichever heartbeat it sees first, so a session where another tool got in
+    first serves the short packet and these are simply absent — which must
+    read as "unavailable", not as zeros that look like a stationary car."""
+    import struct
+
+    from shaker.gt7.protocol import parse_packet
+
+    short = bytearray(0x128)
+    short[0:4] = b"0S7G"
+    assert parse_packet(bytes(short)).has_motion is False
+
+    long_ = bytearray(0x158)
+    long_[0:4] = b"0S7G"
+    struct.pack_into("<3f", long_, 0x130, 1.5, -2.5, 3.5)
+    p = parse_packet(bytes(long_))
+    assert p.has_motion is True
+    assert (p.sway, p.heave, p.surge) == (1.5, -2.5, 3.5)
+
+
+def test_reference_accelerations_are_derived_correctly() -> None:
+    """The references are the experiment: sway/heave/surge mean nothing until
+    compared against quantities whose meaning is established."""
+    from shaker.audio.bus import AudioBus
+    from shaker.config import AudioConfig
+    from shaker.gt7.protocol import TelemetryPacket
+
+    bus = AudioBus(AudioConfig())
+    for i in range(60):
+        p = TelemetryPacket()
+        p.flags, p.lap_count, p.packet_id = 0b01, 1, i
+        p.speed_mps = 20.0 + i * 0.05      # +3.0 m/s^2 at 60 Hz
+        p.ang_vel_y = 0.3
+        p.position_x = i * 1.0
+        bus.push_packet(p)
+
+    assert bus.features.long_accel == pytest.approx(3.0, abs=0.05)
+    assert bus.features.lat_accel == pytest.approx((20.0 + 59 * 0.05) * 0.3, rel=1e-3)
+
+
+def test_packet_id_gap_does_not_produce_a_phantom_spike() -> None:
+    """UDP drops. Differentiating against wall time would read a dropped frame
+    as a huge acceleration; packet_id makes the gap visible instead."""
+    from shaker.audio.bus import AudioBus
+    from shaker.config import AudioConfig
+    from shaker.gt7.protocol import TelemetryPacket
+
+    bus = AudioBus(AudioConfig())
+    for pid, speed in ((0, 20.0), (1, 20.05), (2, 20.10)):
+        p = TelemetryPacket()
+        p.flags, p.lap_count, p.packet_id = 0b01, 1, pid
+        p.speed_mps, p.position_x = speed, pid * 1.0
+        bus.push_packet(p)
+    steady = bus.features.long_accel
+
+    p = TelemetryPacket()                  # 3-frame gap, 3x the speed change
+    p.flags, p.lap_count, p.packet_id = 0b01, 1, 5
+    p.speed_mps, p.position_x = 20.25, 9.0
+    bus.push_packet(p)
+    assert bus.features.long_accel == pytest.approx(steady, abs=0.6)

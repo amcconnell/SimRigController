@@ -29,6 +29,11 @@ _HEADER_BE = b"G6S0"
 _SALSA_KEY = b"Simulator Interface Packet GT7 ver 0.0"
 _MIN_DECRYPT_LEN = 0x44
 _MIN_PARSE_LEN = 0x128
+# Body-motion fields live past the base packet. GT7 serves three sizes —
+# 'A' 0x128, 'B' 0x13C, '~' 0x158 — and first-heartbeat-wins means a session
+# where another tool got in first may serve the short one. Reading f(0x138)
+# touches bytes through 0x13B, so guard on 0x13C, not on "bigger than base".
+_MIN_MOTION_LEN = 0x13C
 
 
 def decrypt_packet(data: bytes) -> bytes:
@@ -134,6 +139,15 @@ class TelemetryPacket:
     fuel_level: float = 0.0
     fuel_capacity: float = 0.0
 
+    # Body motion, only present in the longer packet layouts — see
+    # _MIN_MOTION_LEN. Units and reference frame are UNVERIFIED; nothing
+    # should depend on them until a live capture says what they are.
+    sway: float = 0.0
+    heave: float = 0.0
+    surge: float = 0.0
+    has_motion: bool = False
+    packet_len: int = 0
+
     # Road surface plane
     road_plane_x: float = 0.0
     road_plane_y: float = 0.0
@@ -228,6 +242,13 @@ def parse_packet(data: bytes) -> TelemetryPacket:
     p.suspension_FR = f(0xC8)
     p.suspension_RL = f(0xCC)
     p.suspension_RR = f(0xD0)
+
+    p.packet_len = len(data)
+    if len(data) >= _MIN_MOTION_LEN:
+        p.sway = f(0x130)
+        p.heave = f(0x134)
+        p.surge = f(0x138)
+        p.has_motion = True
 
     return p
 

@@ -87,6 +87,21 @@ class TelemetryFeatures:
     slip_magnitude: float = 0.0
     lap_count: int = 0
 
+    # Body motion straight off the wire. Meaning UNVERIFIED — acceleration,
+    # velocity and displacement are all plausible, and the reference frame is
+    # unknown. Nothing audible reads these.
+    sway: float = 0.0
+    heave: float = 0.0
+    surge: float = 0.0
+    has_motion: bool = False
+
+    # Independently derived references, computed purely so the fields above
+    # can be identified by comparison on a live rig. long_accel is d(speed)/dt;
+    # lat_accel is v * yaw_rate, exact only at zero sideslip but close enough
+    # to tell an acceleration from a displacement.
+    long_accel: float = 0.0   # m/s^2, + accelerating
+    lat_accel: float = 0.0    # m/s^2
+
     # --- Per-axle split (front = pedal-deck shaker, rear = seat shaker) -------
     # Diagnostics only for now: nothing on the audio path reads these yet. They
     # exist so the per-corner mapping and units the two-channel stage depends on
@@ -144,6 +159,12 @@ class AudioBus:
         self._activity_front: float = 0.0
         self._activity_rear: float = 0.0
         self._last_gear: int | None = None
+        # Previous frame, for differentiating speed. packet_id is a better
+        # clock than wall time: it increments once per physics frame, so a
+        # dropped packet shows up as a gap rather than a phantom spike.
+        self._prev_packet_id: int = 0
+        self._prev_speed: float = 0.0
+        self._long_accel: float = 0.0
         self._freeze_key: tuple | None = None
         self._freeze_count: int = 0
 
@@ -205,6 +226,9 @@ class AudioBus:
             f.reset()
         self._activity_front = 0.0
         self._activity_rear = 0.0
+        self._prev_packet_id = 0
+        self._prev_speed = 0.0
+        self._long_accel = 0.0
         self._last_gear = None
 
     def current_vibration_activity(self) -> float:
@@ -391,6 +415,19 @@ class AudioBus:
         slip_front = max((slip_FL, slip_FR), key=abs)
         slip_rear = max((slip_RL, slip_RR), key=abs)
 
+        # Differentiate speed for a reference longitudinal acceleration.
+        # Lightly smoothed: raw 60 Hz differentiation of a float is noisy
+        # enough to obscure the comparison this exists for.
+        frames = p.packet_id - self._prev_packet_id
+        if self._prev_packet_id and 0 < frames <= 6:
+            raw = (p.speed_mps - self._prev_speed) / (frames / _TELEMETRY_RATE_HZ)
+            self._long_accel = 0.25 * raw + 0.75 * self._long_accel
+        self._prev_packet_id = p.packet_id
+        self._prev_speed = p.speed_mps
+
+        # a_lat = v * yaw_rate; ang_vel_y is labelled yaw in protocol.py.
+        lat_accel = p.speed_mps * p.ang_vel_y
+
         # Replace the dataclass atomically (single ref assignment).
         self.features = TelemetryFeatures(
             speed_mps=p.speed_mps,
@@ -405,6 +442,12 @@ class AudioBus:
             suspension_activity_rear=self._activity_rear,
             slip_front=slip_front,
             slip_rear=slip_rear,
+            sway=p.sway,
+            heave=p.heave,
+            surge=p.surge,
+            has_motion=p.has_motion,
+            long_accel=self._long_accel,
+            lat_accel=lat_accel,
         )
 
         # Detect gear changes between any engaged gears (forward 1..8, reverse 15).

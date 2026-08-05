@@ -144,9 +144,19 @@ export interface CarIdentity {
   engine_position: string | null;
 }
 
+export interface MotionStatus {
+  has_motion: boolean;
+  sway: number;
+  heave: number;
+  surge: number;
+  long_accel: number;
+  lat_accel: number;
+}
+
 export interface Status {
   gt7: GT7Status;
   car: CarIdentity;
+  motion: MotionStatus;
   telemetry: TelemetrySummary | null;
   muted: boolean;
   axle: AxleStatus;

@@ -17,14 +17,17 @@ import { BoolField, NumberField, TextField } from "./components/ConfigField";
 import { ProfileSelector } from "./components/ProfileSelector";
 import { MuteButton } from "./components/MuteButton";
 import { AxlePanel } from "./components/AxlePanel";
+import { MotionPanel } from "./components/MotionPanel";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
+type View = "tuning" | "diagnostics";
 
 export function App() {
   const [config, setConfig] = useState<Config | null>(null);
   const [status, setStatus] = useState<Status | null>(null);
   const [profiles, setProfiles] = useState<ProfilesState | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [view, setView] = useState<View>("tuning");
   const [error, setError] = useState<string | null>(null);
   // We hold a debounced PUT so per-keystroke fields don't spam the API.
   const pendingTimer = useRef<number | null>(null);
@@ -118,10 +121,41 @@ export function App() {
       <main className="mx-auto max-w-5xl px-4 py-6 pb-24">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-bold tracking-tight text-zinc-100">SimRig Shaker</h1>
-          <SaveIndicator state={saveState} error={error} />
+          <div className="flex items-center gap-3">
+            <SaveIndicator state={saveState} error={error} />
+            <nav className="flex rounded-lg border border-zinc-800 p-0.5" role="tablist">
+              {(["tuning", "diagnostics"] as View[]).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  role="tab"
+                  aria-selected={view === v}
+                  onClick={() => setView(v)}
+                  className={`rounded-md px-3 py-1 text-xs font-medium uppercase tracking-wide transition ${
+                    view === v
+                      ? "bg-zinc-800 text-zinc-100"
+                      : "text-zinc-500 hover:text-zinc-300"
+                  }`}
+                >
+                  {v}
+                </button>
+              ))}
+            </nav>
+          </div>
         </div>
 
-        {profiles && (
+        {view === "diagnostics" && (
+          <>
+            <p className="mb-4 text-xs text-zinc-500">
+              Read-only. These exist to settle protocol assumptions from the driver's seat —
+              nothing here changes what the rig does.
+            </p>
+            <MotionPanel motion={status?.motion} />
+            <AxlePanel axle={status?.axle} />
+          </>
+        )}
+
+        {view === "tuning" && profiles && (
           <div className="mb-4 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
             <ProfileSelector state={profiles} onChange={handleProfilesChange} onError={setError} />
             {isDefaultProfile && (
@@ -133,11 +167,8 @@ export function App() {
           </div>
         )}
 
-        {/* Read-only, and deliberately outside the config fieldset: it stays
-            live and undimmed on the read-only default profile, which is what
-            you are on while checking telemetry against a real console. */}
-        <AxlePanel axle={status?.axle} />
-
+        {view === "tuning" && (
+        <>
         <fieldset disabled={isDefaultProfile} className="space-y-6 disabled:opacity-60">
 
         <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
@@ -326,6 +357,8 @@ export function App() {
               hint="HTTP server port. 80 needs CAP_NET_BIND_SERVICE (already granted via the systemd unit). Restart-required." />
           </div>
         </details>
+        </>
+        )}
       </main>
     </>
   );

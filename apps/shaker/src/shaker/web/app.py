@@ -144,6 +144,7 @@ def create_app(
             "gt7": asdict(gt7.status()),
             "telemetry": _summarize_packet(gt7.latest_packet),
             "car": _car_identity(bus.car_code),
+            "motion": _motion_diagnostics(bus.features),
             "muted": bus.muted,
             "axle": _axle_diagnostics(bus.features, gt7.latest_packet),
         }
@@ -202,6 +203,26 @@ def create_app(
         app.mount("/assets", StaticFiles(directory=_ASSETS_DIR), name="assets")
     app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
     return app
+
+
+def _motion_diagnostics(f: TelemetryFeatures) -> dict[str, Any]:
+    """Body-motion fields, next to independently derived references.
+
+    sway/heave/surge arrive in the longer packet layouts and nothing documents
+    what they are — acceleration, velocity and displacement are all plausible,
+    and the frame is unknown. long_accel (d speed/dt) and lat_accel
+    (v * yaw_rate) are computed here from fields whose meaning IS established,
+    so the unknowns can be identified by watching them side by side while
+    driving. Same approach that settled the wheel-rotation sign.
+    """
+    return {
+        "has_motion": f.has_motion,
+        "sway": f.sway,
+        "heave": f.heave,
+        "surge": f.surge,
+        "long_accel": f.long_accel,
+        "lat_accel": f.lat_accel,
+    }
 
 
 def _car_identity(car_code: int | None) -> dict[str, Any]:
