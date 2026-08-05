@@ -184,6 +184,12 @@ export function App() {
           >
             <NumberField label="RPM divisor" value={A.engine_rumble_rpm_divisor} step={5} min={10} max={240} onChange={a("engine_rumble_rpm_divisor")}
               hint="Output frequency = engine_rpm / divisor. Default 60 means 100 Hz at 6000 RPM, 25 Hz at 1500 RPM. Lower divisor = higher pitch." />
+            <SubFieldset legend="Frequency limits">
+              <NumberField label="Min" unit="Hz" value={A.engine_rumble_min_hz} step={1} min={10} max={80} onChange={a("engine_rumble_min_hz")}
+                hint="Floor for the derived frequency. Below ~20 Hz a shaker moves but you feel almost nothing, so low-RPM lugging just wastes headroom." />
+              <NumberField label="Max" unit="Hz" value={A.engine_rumble_max_hz} step={1} min={40} max={160} onChange={a("engine_rumble_max_hz")}
+                hint="Ceiling for the derived frequency. Above ~120 Hz the shaker stops shaking and starts buzzing audibly through the rig frame — at divisor 60 that's every pull past 7000 RPM." />
+            </SubFieldset>
           </EffectCard>
 
           <EffectCard

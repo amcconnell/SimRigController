@@ -46,6 +46,12 @@ class AudioConfig:
     engine_rumble_enabled: bool = True
     engine_rumble_gain: float = 1.0
     engine_rumble_rpm_divisor: float = 60.0
+    # Clamp the derived frequency into the band a shaker can actually render.
+    # rpm/60 is engine order 1, so it leaves the useful band on every redline
+    # pull (7000 rpm = 117 Hz, a 13k-rpm car = 217 Hz) where it radiates as
+    # airborne buzz through the frame instead of felt motion.
+    engine_rumble_min_hz: float = 26.0
+    engine_rumble_max_hz: float = 100.0
     # Brake rumble: low-frequency hum while braking; amplitude scales with brake above threshold.
     brake_rumble_enabled: bool = True
     brake_rumble_gain: float = 1.0
@@ -101,14 +107,35 @@ def load(path: Path = DEFAULT_CONFIG_PATH) -> Config:
     return _from_dict(raw)
 
 
+def _known(section: type, raw: dict[str, Any]) -> dict[str, Any]:
+    """Drop keys the dataclass doesn't declare, warning about each one.
+
+    `save()` writes every field of the current schema, so a config written by
+    a newer build carries fields an older one has never heard of. Without this
+    filter `Section(**raw)` raises TypeError, `load()` at startup isn't guarded
+    (runtime.run), and the systemd unit is Restart=always/RestartSec=2 — so a
+    rollback becomes a 2-second crash loop with no web UI to fix it from.
+    Unknown keys fall back to defaults instead. profiles.get_audio already
+    filters for the same reason.
+    """
+    fields_ = {f.name for f in fields(section)}
+    unknown = set(raw) - fields_
+    if unknown:
+        log.warning(
+            "ignoring unknown %s config keys (newer schema?): %s",
+            section.__name__, ", ".join(sorted(unknown)),
+        )
+    return {k: v for k, v in raw.items() if k in fields_}
+
+
 def _from_dict(raw: dict[str, Any]) -> Config:
     gt7_raw = dict(raw.get("gt7", {}))
     if gt7_raw.get("ps5_ip") == "":
         gt7_raw["ps5_ip"] = None
     return Config(
-        gt7=GT7Config(**gt7_raw),
-        web=WebConfig(**raw.get("web", {})),
-        audio=AudioConfig(**raw.get("audio", {})),
+        gt7=GT7Config(**_known(GT7Config, gt7_raw)),
+        web=WebConfig(**_known(WebConfig, raw.get("web", {}))),
+        audio=AudioConfig(**_known(AudioConfig, raw.get("audio", {}))),
     )
 
 

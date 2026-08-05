@@ -30,6 +30,8 @@ export interface AudioConfig {
   engine_rumble_enabled: boolean;
   engine_rumble_gain: number;
   engine_rumble_rpm_divisor: number;
+  engine_rumble_min_hz: number;
+  engine_rumble_max_hz: number;
 
   brake_rumble_enabled: boolean;
   brake_rumble_gain: number;
