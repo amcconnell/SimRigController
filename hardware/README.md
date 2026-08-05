@@ -1,0 +1,61 @@
+# Hardware
+
+Printable parts for the rig. The `.py` files are the source; the `.FCStd` and
+`.stl` alongside them are generated output, committed so you can slice without
+opening FreeCAD.
+
+Regenerate after editing a script:
+
+```sh
+freecadcmd hardware/adxl_pod.py
+```
+
+## ADXL345 sensor pod
+
+Bolt-on enclosure for a GY-291 ADXL345 breakout, with an RJ45 keystone jack for
+a Cat5 drop back to the Pi. One pod per contact point — seat pan and pedal deck.
+
+Part of the accelerometer feedback loop: the shaker app has no input, so every
+level it reports is the buffer it computed, upstream of the DAC, amp and
+transducer. It reads identically whether a shaker is working or its cable is
+cut. An accelerometer on the frame is what turns "does this feel balanced?"
+into a number.
+
+| | |
+| --- | --- |
+| Outer | 66 x 40 x 36 mm, ~43 g pod + ~12 g lid in PLA |
+| Rig bolt | M5, counterbored so the head finishes below the board |
+| Board | GY-291, 15.0 mm hole spacing, M2.5 heat-set inserts |
+| Jack | AMPCOM HKJ-801M keystone, 14.7 x 19.6 aperture, 2 mm local wall |
+| Lid | Snap-fit, 0.4 mm bead, pry notch at the far end |
+
+### Assembly
+
+1. Heat-set two M2.5 inserts into the pedestal.
+2. Punch the keystone down onto short **solid-core** pigtails — IDC terminals
+   bite solid wire, and stranded works loose under vibration. Snap the jack in
+   from outside.
+3. Bolt the pod to the frame **before** fitting the board; it covers the
+   counterbore.
+4. Screw the ADXL345 down, wire it to the pigtails, snap the lid on.
+
+Second pod ties SDO high for I2C address `0x1D`; both share one bus.
+
+### Things that are load-bearing, not stylistic
+
+- **The pedestal.** Mount stiffness *is* the measurement. A compliant path adds
+  its own resonance, and if that lands under ~120 Hz it reads as rig behaviour.
+  The walls are a shell and carry nothing.
+- **The counterbore.** It exists so the board can straddle the bolt rather than
+  stand off above its head — which would rebuild the compliance the pedestal is
+  there to avoid.
+- **The 2 mm wall at the aperture.** Keystone latches are made for wall-plate
+  stock and will not grip 3 mm.
+- **The tight snap groove.** A rattling lid is a noise source on a part built to
+  measure vibration. If it still rattles once printed, damp it with tape.
+
+### Before printing 55 g
+
+The keystone snap and the lid snap both come from drawings rather than calipers,
+and both sit within FDM tolerance of not fitting. Slice the first 5 mm in X (the
+keystone wall) and a short length of lid rim, and check the fits first.

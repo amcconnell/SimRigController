@@ -32,3 +32,7 @@ apps/shaker/config/profiles.json
 
 # Logs
 *.log
+
+# FreeCAD backups
+*.FCBak
+*.FCStd1
