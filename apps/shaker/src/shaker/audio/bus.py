@@ -107,13 +107,11 @@ class TelemetryFeatures:
     # `slip_magnitude` above throws that sign away, so it cannot tell a locked
     # wheel from a spinning one; these can.
     #
-    # Both depend on assumptions that are UNVERIFIED against a real console:
-    # that `wheel_rps * tire_radius` really is a surface speed in m/s (i.e. that
-    # wheel_rps is rad/s despite the protocol.py comment saying rev/s), and that
-    # speed_mps is signed. If wheel_rps is genuinely rev/s these read 2*pi too
-    # large; if speed_mps is an unsigned magnitude, reversing reads as total
-    # lockup. Exposed over /api/status precisely so both can be settled by
-    # driving. Nothing audible depends on them until that is done.
+    # wheel_rps units and sign were settled on a live console 2026-08-05:
+    # rad/s, sent negated by GT7, normalized on parse. Still UNVERIFIED: that
+    # the FL/FR/RL/RR corner order matches the offsets, and whether speed_mps
+    # is signed in reverse — if it is an unsigned magnitude, reversing reads as
+    # total lockup. Exposed over /api/status so both can be settled by driving.
     slip_front: float = 0.0
     slip_rear: float = 0.0
 

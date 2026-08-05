@@ -80,13 +80,21 @@ class TelemetryPacket:
     engine_rpm: float = 0.0
     speed_mps: float = 0.0
 
-    # Per-corner wheel rotation (revolutions per second)
+    # Per-corner wheel rotation, normalized on parse to rad/s and positive
+    # when the car is moving forward. GT7 sends it negated: measured on a live
+    # console 2026-08-05, `raw * tire_radius` tracked `-speed_mps` to within 1%
+    # from 6 to 184 km/h, across braking, coasting and wheelspin.
+    #
+    # Do not "correct" this back by reasoning that a wrong sign would obviously
+    # have made the slip effect buzz constantly. It did, from the first
+    # release, in every car — which is precisely why it was never heard as a
+    # fault rather than as how the rig sounds.
     wheel_rps_FL: float = 0.0
     wheel_rps_FR: float = 0.0
     wheel_rps_RL: float = 0.0
     wheel_rps_RR: float = 0.0
 
-    # Per-corner tire radius (m) — multiply by wheel_rps for m/s
+    # Per-corner tire radius (m) — multiply by wheel_rps for surface speed in m/s
     tire_radius_FL: float = 0.317
     tire_radius_FR: float = 0.317
     tire_radius_RL: float = 0.317
@@ -196,10 +204,12 @@ def parse_packet(data: bytes) -> TelemetryPacket:
     p.road_plane_z = f(0x9C)
     p.road_plane_dist = f(0xA0)
 
-    p.wheel_rps_FL = f(0xA4)
-    p.wheel_rps_FR = f(0xA8)
-    p.wheel_rps_RL = f(0xAC)
-    p.wheel_rps_RR = f(0xB0)
+    # Negated at the boundary rather than at each use site, so everything
+    # downstream gets a surface speed that compares directly with speed_mps.
+    p.wheel_rps_FL = -f(0xA4)
+    p.wheel_rps_FR = -f(0xA8)
+    p.wheel_rps_RL = -f(0xAC)
+    p.wheel_rps_RR = -f(0xB0)
 
     p.tire_radius_FL = f(0xB4)
     p.tire_radius_FR = f(0xB8)
