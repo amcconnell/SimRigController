@@ -105,9 +105,13 @@ class AudioConfig:
     gear_shift_min_gain_pct: float = 50.0
     gear_shift_max_gain_pct: float = 100.0
     # Rear by default: driveline shock reacts through the driven axle, which is
-    # the rear on the majority of cars. Wrong for front-wheel drive — a per-car
-    # fact the drivetrain table will supply once the car code is parsed.
+    # the rear on the majority of cars, and wrong for front-wheel drive.
     gear_shift_bias: float = 0.5
+    # Let the car database decide *which end* the gear-shift and engine effects
+    # belong on, using the car code in the telemetry. The bias values above
+    # then set only how strongly, not where. An unknown car — or this switched
+    # off — falls back to the configured values exactly as written.
+    drivetrain_routing_enabled: bool = True
 
 
 @dataclass(frozen=True)

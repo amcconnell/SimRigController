@@ -9,6 +9,7 @@ import math
 import numpy as np
 
 from shaker.audio.bus import AudioBus
+from shaker.gt7 import drivetrain
 from shaker.audio.effects import (
     BrakeRumble,
     EngineRumble,
@@ -104,6 +105,11 @@ class AudioOutput:
         self._wiring_phase = 0.0
         self._wiring_seen = 0
         self._wiring_frames = -1
+        # Cached drivetrain lookup. The car only changes between sessions, so
+        # resolving it once per car keeps a dict lookup off the audio path.
+        self._routed_car: int | None = -1  # -1 = nothing resolved yet
+        self._driven_axle: str | None = None
+        self._engine_position: str | None = None
         self._stop = asyncio.Event()
         self._stream = None  # type: ignore[assignment]
 
@@ -320,11 +326,12 @@ class AudioOutput:
         # signals with no per-axle telemetry behind them, so they are placed by
         # a bias rather than derived — see the config comments for which are
         # physics and which are taste.
+        gear_bias, engine_bias = self._placement(cfg)
         front = vib + slip
         rear = rear_vib + rear_slip
         for signal, bias in (
-            (gear, cfg.gear_shift_bias),
-            (engine, cfg.engine_rumble_bias),
+            (gear, gear_bias),
+            (engine, engine_bias),
             (brake, cfg.brake_rumble_bias),
             (rev_limit, cfg.rev_limiter_bias),
         ):
@@ -335,6 +342,42 @@ class AudioOutput:
         np.multiply(front, cfg.master_gain, out=front)
         np.multiply(rear, cfg.master_gain * cfg.rear_gain_trim, out=rear)
         self._write_channels(outdata, frames, (front, rear))
+
+    def _placement(self, cfg) -> tuple[float, float]:  # type: ignore[no-untyped-def]
+        """(gear_shift_bias, engine_rumble_bias), steered by the car if known.
+
+        The configured value supplies the *magnitude* and the car database the
+        *direction*: a shift thump keeps the strength the user dialled in, but
+        lands on whichever axle is actually driven. That way the knob still
+        does what the label says on an unrecognised car, and a front-wheel-
+        drive car stops thumping the seat through an axle it does not drive.
+        """
+        gear = cfg.gear_shift_bias
+        engine = cfg.engine_rumble_bias
+        if not cfg.drivetrain_routing_enabled:
+            return (gear, engine)
+
+        car = self._bus.car_code
+        if car != self._routed_car:
+            self._routed_car = car
+            self._driven_axle = drivetrain.driven_axle(car)
+            self._engine_position = drivetrain.engine_position(car)
+
+        if self._driven_axle == "front":
+            gear = -abs(gear)
+        elif self._driven_axle == "rear":
+            gear = abs(gear)
+        elif self._driven_axle == "both":
+            gear = 0.0  # four-wheel drive shocks both ends
+
+        # Deliberately no branch for four-wheel drive: the source records drive
+        # type but not engine position, and 4WD spans both extremes. Leaving
+        # the configured value alone beats guessing a Veyron is front-engined.
+        if self._engine_position == "front":
+            engine = -abs(engine)
+        elif self._engine_position == "rear":
+            engine = abs(engine)
+        return (gear, engine)
 
     def _write_channels(self, outdata, frames: int, bufs) -> None:  # type: ignore[no-untyped-def]
         """Mute ramp, shared-gain limiting, and the write into PortAudio.

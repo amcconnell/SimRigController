@@ -126,6 +126,11 @@ class AudioBus:
         self.features: TelemetryFeatures = TelemetryFeatures()
         # Incremented on any change between two engaged gears — up or down.
         self.gear_shift_count: int = 0
+        # Latest car identity. Deliberately not part of TelemetryFeatures and
+        # not cleared by reset_features(): which car you are in does not stop
+        # being true because the game paused, and clearing it would make the
+        # rig re-derive its routing every time you open a menu.
+        self.car_code: int | None = None
         # System-wide mute. In-memory only — doesn't persist across restarts
         # (intentional: "I muted to take a call" shouldn't pollute config).
         self.muted: bool = False
@@ -345,6 +350,8 @@ class AudioBus:
         else:
             self._freeze_key = key
             self._freeze_count = 0
+
+        self.car_code = p.car_code or None
 
         # Per-corner HPF — isolates bump transients from slow load shifts.
         fl = self._hpf_FL.step(p.suspension_FL)

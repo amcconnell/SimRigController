@@ -13,7 +13,7 @@ import { DEFAULT_PROFILE_NAME } from "./types/config";
 import { StatusBar } from "./components/StatusBar";
 import { EffectCard, SubFieldset } from "./components/EffectCard";
 import { TestButton } from "./components/TestButton";
-import { NumberField, TextField } from "./components/ConfigField";
+import { BoolField, NumberField, TextField } from "./components/ConfigField";
 import { ProfileSelector } from "./components/ProfileSelector";
 import { MuteButton } from "./components/MuteButton";
 import { AxlePanel } from "./components/AxlePanel";
@@ -283,13 +283,15 @@ export function App() {
             onGainChange={a("gear_shift_gain")}
             bias={stereo ? A.gear_shift_bias : undefined}
             onBiasChange={a("gear_shift_bias")}
-            biasHint="Driveline shock reacts through the driven axle — rear for most cars, but wrong for front-wheel drive. Set it per profile until the car database can supply it automatically."
+            biasHint="Driveline shock reacts through the driven axle. With drivetrain routing on, the car database picks the end and this slider sets only how hard — so a front-wheel-drive car thumps the pedals instead of the seat."
             testButton={<TestButton label="shift" test="gear_shift" variant="header" />}
           >
             <NumberField label="Frequency" unit="Hz" value={A.gear_shift_freq_hz} step={1} min={10} max={200} onChange={a("gear_shift_freq_hz")}
               hint="Thump frequency. Lower = deeper, higher = sharper click." />
             <NumberField label="Duration" unit="ms" value={A.gear_shift_duration_ms} step={5} min={10} max={500} onChange={a("gear_shift_duration_ms")}
               hint="How long the thump lasts. Squared-decay envelope inside that window." />
+            <BoolField label="Use car drivetrain" value={A.drivetrain_routing_enabled} onChange={a("drivetrain_routing_enabled")}
+              hint="Look the car up by its telemetry car code and place the gear-shift and engine effects by where the engine sits and which axle is driven. The bias sliders then control strength only. Unrecognised cars fall back to the sliders exactly as set." />
             <SubFieldset legend="RPM-based gain modulation">
               <NumberField label="RPM ramp start" unit="%" value={A.gear_shift_rpm_pct_low} step={1} min={0} max={100} onChange={a("gear_shift_rpm_pct_low")}
                 hint="Below this RPM%, gear-shift gain is at the low-RPM value." />

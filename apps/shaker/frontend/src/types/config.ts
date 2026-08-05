@@ -64,6 +64,7 @@ export interface AudioConfig {
   gear_shift_min_gain_pct: number;
   gear_shift_max_gain_pct: number;
   gear_shift_bias: number;
+  drivetrain_routing_enabled: boolean;
 }
 
 export interface Config {
@@ -135,8 +136,16 @@ export interface AxleStatus {
   raw: AxleRawStatus | null;
 }
 
+export interface CarIdentity {
+  code: number | null;
+  layout: string | null;
+  driven_axle: string | null;
+  engine_position: string | null;
+}
+
 export interface Status {
   gt7: GT7Status;
+  car: CarIdentity;
   telemetry: TelemetrySummary | null;
   muted: boolean;
   axle: AxleStatus;

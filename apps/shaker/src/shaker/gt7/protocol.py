@@ -80,13 +80,19 @@ class TelemetryPacket:
     engine_rpm: float = 0.0
     speed_mps: float = 0.0
 
-    # Per-corner wheel rotation (revolutions per second)
+    # Per-corner wheel rotation. Named "rps" by the community docs this was
+    # ported from, but consumed as rad/s: wheel_rps * tire_radius is used as a
+    # surface speed in m/s, which only holds for rad/s. Two pieces of evidence
+    # agree it really is rad/s and positive-forward — the algebra above, and
+    # the fact that any other convention would make every wheel read as
+    # grossly slipping at all times, so the slip effect would buzz constantly
+    # in every car. Not yet confirmed against a captured packet.
     wheel_rps_FL: float = 0.0
     wheel_rps_FR: float = 0.0
     wheel_rps_RL: float = 0.0
     wheel_rps_RR: float = 0.0
 
-    # Per-corner tire radius (m) — multiply by wheel_rps for m/s
+    # Per-corner tire radius (m) — multiply by wheel_rps for surface speed in m/s
     tire_radius_FL: float = 0.317
     tire_radius_FR: float = 0.317
     tire_radius_RL: float = 0.317
@@ -105,6 +111,10 @@ class TelemetryPacket:
     last_lap_ms: int = -1
 
     flags: int = 0
+    # GT7's numeric car identifier. Stable per car, so it can be looked up in
+    # a drivetrain table to decide which end of the rig a gear shift or engine
+    # thrum belongs on — facts the packet itself carries no field for.
+    car_code: int = 0
     throttle: int = 0
     brake: int = 0
     current_gear: int = 0
@@ -190,6 +200,10 @@ def parse_packet(data: bytes) -> TelemetryPacket:
     p.suggested_gear = (gear_byte >> 4) & 0x0F
     p.throttle = u8(0x91)
     p.brake = u8(0x92)
+
+    # Inside _MIN_PARSE_LEN (0x128) already, so this needs no extra length
+    # guard and cannot break the shorter 'A' packet layout.
+    p.car_code = i32(0x124)
 
     p.road_plane_x = f(0x94)
     p.road_plane_y = f(0x98)

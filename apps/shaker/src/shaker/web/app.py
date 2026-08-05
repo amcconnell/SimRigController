@@ -14,6 +14,7 @@ from shaker import config as cfg_mod
 from shaker import profiles as profiles_mod
 from shaker.audio.bus import AudioBus, TelemetryFeatures
 from shaker.config import Config
+from shaker.gt7 import drivetrain
 from shaker.gt7.client import GT7Client
 from shaker.gt7.protocol import TelemetryPacket
 from shaker.profiles import DEFAULT_PROFILE_NAME
@@ -142,6 +143,7 @@ def create_app(
         return {
             "gt7": asdict(gt7.status()),
             "telemetry": _summarize_packet(gt7.latest_packet),
+            "car": _car_identity(bus.car_code),
             "muted": bus.muted,
             "axle": _axle_diagnostics(bus.features, gt7.latest_packet),
         }
@@ -200,6 +202,21 @@ def create_app(
         app.mount("/assets", StaticFiles(directory=_ASSETS_DIR), name="assets")
     app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
     return app
+
+
+def _car_identity(car_code: int | None) -> dict[str, Any]:
+    """What the drivetrain table knows about the car currently being driven.
+
+    Surfaced so a driver can confirm the lookup actually resolved — an
+    unrecognised car silently falls back to the configured biases, which is
+    correct but indistinguishable from the routing working.
+    """
+    return {
+        "code": car_code,
+        "layout": drivetrain.layout_for(car_code),
+        "driven_axle": drivetrain.driven_axle(car_code),
+        "engine_position": drivetrain.engine_position(car_code),
+    }
 
 
 def _summarize_packet(p: TelemetryPacket | None) -> dict[str, Any] | None:
