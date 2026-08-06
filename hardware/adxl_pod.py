@@ -57,8 +57,15 @@ KEY_W, KEY_H = 14.7, 19.6         # snap body 14.38 x 19.39 + clearance
 KEY_Z, PANEL_T = 8.0, 2.0
 JACK_DEPTH = 37.3                 # AMPCOM drawing, overall
 
-LIP_H, LIP_T, LIP_GAP = 6.0, 1.5, 0.2
+LIP_H, LIP_T, LIP_GAP = 6.0, 1.5, 0.25
 BEAD, GROOVE, PLATE_T = 0.4, 0.5, 3.0
+# The bead leads with a ramp rather than a square shoulder, so insertion and
+# removal are not the same fight: going in, the lip is deflected gradually over
+# BEAD_RAMP; coming out, it still meets the full square top face. Built as
+# explicit steps because FDM discretises a chamfer into a staircase anyway —
+# modelling it as one makes the printed result predictable rather than a
+# slicer's approximation of a slope.
+BEAD_RAMP, BEAD_STEPS = 0.5, 4
 
 CX, CY = L - 2 * WALL, W - 2 * WALL
 
@@ -89,7 +96,7 @@ def build():
                                App.Vector(-1, BOLT_Y - KEY_W / 2, KEY_Z)))
 
     # Snap groove, sized to the bead with 0.2 mm total play.
-    gz = H - LIP_H + 0.4
+    gz = H - LIP_H + BEAD_RAMP - 0.1
     ring = Part.makeBox(CX + 2 * GROOVE, CY + 2 * GROOVE, 1.2,
                         App.Vector(WALL - GROOVE, WALL - GROOVE, gz))
     ring = ring.cut(Part.makeBox(CX, CY, 4.0, App.Vector(WALL, WALL, gz - 1)))
@@ -108,8 +115,16 @@ def build():
 
     lid = Part.makeBox(L, W, PLATE_T, App.Vector(0, 0, H))
     lid = lid.fuse(Part.makeBox(lo_x, lo_y, LIP_H, App.Vector(ox, oy, H - LIP_H)).cut(hollow))
+    # Ramped lead-in, then the square retaining shoulder.
+    step_h = BEAD_RAMP / BEAD_STEPS
+    for i in range(BEAD_STEPS):
+        out = BEAD * (i + 1) / BEAD_STEPS
+        z = H - LIP_H + i * step_h
+        lid = lid.fuse(Part.makeBox(lo_x + 2 * out, lo_y + 2 * out, step_h + 0.01,
+                                    App.Vector(ox - out, oy - out, z)).cut(hollow))
     lid = lid.fuse(Part.makeBox(lo_x + 2 * BEAD, lo_y + 2 * BEAD, 1.0,
-                                App.Vector(ox - BEAD, oy - BEAD, H - LIP_H + 0.5)).cut(hollow))
+                                App.Vector(ox - BEAD, oy - BEAD,
+                                           H - LIP_H + BEAD_RAMP)).cut(hollow))
     return pod, lid
 
 

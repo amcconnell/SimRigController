@@ -27,7 +27,7 @@ into a number.
 | Rig bolt | M5, counterbored so the head finishes below the board |
 | Board | GY-291, 15.0 mm hole spacing, M2.5 heat-set inserts |
 | Jack | AMPCOM HKJ-801M keystone, 14.7 x 19.6 aperture, 2 mm local wall |
-| Lid | Snap-fit, 0.4 mm bead, pry notch at the far end |
+| Lid | Snap-fit, 0.4 mm bead with a 0.45 mm lead-in ramp, pry notch |
 
 ### Assembly
 
@@ -53,6 +53,11 @@ Second pod ties SDO high for I2C address `0x1D`; both share one bus.
   stock and will not grip 3 mm.
 - **The tight snap groove.** A rattling lid is a noise source on a part built to
   measure vibration. If it still rattles once printed, damp it with tape.
+- **The bead's lead-in ramp.** Insertion and removal should not be the same
+  fight: the ramp deflects the lip gradually on the way in, while the square
+  top shoulder still does the retaining. If the lid ends up too loose, raise
+  `BEAD` rather than removing the ramp — that restores grip without making it
+  hard to fit again.
 
 ### Before printing 55 g
 
