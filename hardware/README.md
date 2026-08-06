@@ -1,14 +1,29 @@
 # Hardware
 
-Printable parts for the rig. The `.py` files are the source; the `.FCStd` and
-`.stl` alongside them are generated output, committed so you can slice without
-opening FreeCAD.
+Printable parts for the rig.
 
-Regenerate after editing a script:
+## Which files to edit
 
-```sh
-freecadcmd hardware/adxl_pod.py
-```
+**`ADXL_Pod_PD.FCStd` is the model.** It is a PartDesign document: open it in
+FreeCAD, edit the `Params` spreadsheet, and every sketch follows. Sketches are
+constrained and bound to spreadsheet aliases by expression, and each attaches
+to an origin plane rather than to a face of an earlier feature — face
+references are what make PartDesign models break when something upstream
+changes size.
+
+`build_adxl_pod_pd.py` built it once and is kept only to show the layout. It is
+not re-run; the `.FCStd` is the source now.
+
+`adxl_pod.py` is the earlier Part-primitive implementation. Kept as a
+reference for the geometry rationale and because its assertions document the
+two collisions found during design. **Read-only** — edits go in the PartDesign
+model. Regenerate its own output, if ever needed, with
+`freecadcmd hardware/adxl_pod.py`.
+
+Both produce the same part: pod 34.31 cm^3 in each, lid within 0.01 cm^3.
+
+After editing the model, re-export `ADXL_Pod_PD.stl` and `ADXL_Pod_PD_Lid.stl`
+for slicing.
 
 ## ADXL345 sensor pod
 
