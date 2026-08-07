@@ -19,9 +19,10 @@ import { MuteButton } from "./components/MuteButton";
 import { AxlePanel } from "./components/AxlePanel";
 import { MotionPanel } from "./components/MotionPanel";
 import { LimiterPanel } from "./components/LimiterPanel";
+import { RecordPanel } from "./components/RecordPanel";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
-type View = "tuning" | "diagnostics";
+type View = "tuning" | "rig" | "diagnostics";
 
 export function App() {
   const [config, setConfig] = useState<Config | null>(null);
@@ -125,7 +126,7 @@ export function App() {
           <div className="flex items-center gap-3">
             <SaveIndicator state={saveState} error={error} />
             <nav className="flex rounded-lg border border-zinc-800 p-0.5" role="tablist">
-              {(["tuning", "diagnostics"] as View[]).map((v) => (
+              {(["tuning", "rig", "diagnostics"] as View[]).map((v) => (
                 <button
                   key={v}
                   type="button"
@@ -152,42 +153,30 @@ export function App() {
               being compressed, and whether the protocol assumptions still hold from the
               driver's seat. Nothing here changes what the rig does.
             </p>
+            <RecordPanel recording={status?.recording} onError={setError} />
             <LimiterPanel limiter={status?.limiter} />
             <MotionPanel motion={status?.motion} />
             <AxlePanel axle={status?.axle} />
           </>
         )}
 
-        {view === "tuning" && profiles && (
-          <div className="mb-4 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
-            <ProfileSelector state={profiles} onChange={handleProfilesChange} onError={setError} />
-            {isDefaultProfile && (
-              <p className="mt-2 text-xs text-zinc-500">
-                The <span className="font-mono">default</span> profile is built-in and read-only.
-                Create a new profile to tune values.
-              </p>
-            )}
-          </div>
-        )}
-
-        {view === "tuning" && (
+        {view === "rig" && (
         <>
-        {/* Rig, not tuning — deliberately outside the profile fieldset.
-            These five fields describe the machine: which card, how it is
-            buffered, how many amplifier channels are wired, and how unequally
-            the two mounting points couple to you. Profiles neither store nor
-            restore them (see RIG_FIELDS in config.py), so they stay editable
-            even on the read-only default profile, where previously you could
-            not set your own sound card without first creating a profile. */}
+        <p className="mb-4 text-xs text-zinc-500">
+          Facts about the machine rather than how you want it to feel — which card, how it is
+          buffered, how many amplifier channels are wired, and where the PS5 is. Profiles
+          neither store nor restore any of it (see <span className="font-mono">RIG_FIELDS</span>
+          {" "}in <span className="font-mono">config.py</span>), so switching profiles leaves this
+          screen alone and nothing here is locked by the read-only default profile.
+        </p>
+
         <section className="mb-6 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
-          <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-200">Rig</h2>
-            <span className="text-xs text-zinc-500">shared by every profile</span>
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-200">
+              Audio hardware
+            </h2>
+            <span className="text-xs text-zinc-500">restart-required</span>
           </div>
-          <p className="mb-3 text-xs text-zinc-500">
-            Facts about your hardware rather than how you want it to feel. Switching profiles
-            leaves these alone.
-          </p>
           <div className="grid gap-x-8 gap-y-1 sm:grid-cols-2">
             <TextField label="Audio device" value={A.device} placeholder="default" onChange={a("device")}
               hint='ALSA / CoreAudio device name. "default" uses the system default; otherwise enter a substring match (e.g. "External Headphones"). Restart-required.' />
@@ -217,6 +206,40 @@ export function App() {
           )}
         </section>
 
+        <details className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 open:pb-3">
+          <summary className="cursor-pointer text-sm font-semibold uppercase tracking-wider text-zinc-200">
+            Network
+          </summary>
+          <div className="mt-3 grid gap-x-8 gap-y-1 sm:grid-cols-2">
+            <TextField label="PS5 IP override" value={config.gt7.ps5_ip ?? ""} placeholder="(autodiscover)" onChange={(v) => g("ps5_ip")(v === "" ? null : v)}
+              hint="Skip autodiscovery and target this IP. Leave empty to broadcast and use the first PS5 that responds." />
+            <NumberField label="Heartbeat" unit="s" value={config.gt7.heartbeat_interval_s} step={0.5} min={0.5} max={30} onChange={g("heartbeat_interval_s")}
+              hint="How often (in seconds) we ping the PS5 to keep telemetry flowing. GT7 stops sending if heartbeats stop." />
+            <NumberField label="Discovery timeout" unit="s" value={config.gt7.discovery_timeout_s} step={1} min={1} max={120} onChange={g("discovery_timeout_s")}
+              hint="How long broadcast discovery runs before logging a timeout. Discovery itself never stops, this just controls the warning." />
+            <TextField label="Web host" value={config.web.host} onChange={w("host")}
+              hint='Bind address. "0.0.0.0" exposes the UI to the LAN; "127.0.0.1" restricts to localhost. Restart-required.' />
+            <NumberField label="Web port" value={config.web.port} step={1} min={1} max={65535} onChange={w("port")}
+              hint="HTTP server port. 80 needs CAP_NET_BIND_SERVICE (already granted via the systemd unit). Restart-required." />
+          </div>
+        </details>
+        </>
+        )}
+
+        {view === "tuning" && profiles && (
+          <div className="mb-4 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+            <ProfileSelector state={profiles} onChange={handleProfilesChange} onError={setError} />
+            {isDefaultProfile && (
+              <p className="mt-2 text-xs text-zinc-500">
+                The <span className="font-mono">default</span> profile is built-in and read-only.
+                Create a new profile to tune values.
+              </p>
+            )}
+          </div>
+        )}
+
+        {view === "tuning" && (
+        <>
         <fieldset disabled={isDefaultProfile} className="space-y-6 disabled:opacity-60">
 
         <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
@@ -367,23 +390,6 @@ export function App() {
 
         </fieldset>
 
-        <details className="mt-6 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 open:pb-3">
-          <summary className="cursor-pointer text-sm font-semibold uppercase tracking-wider text-zinc-200">
-            Advanced (GT7 / web)
-          </summary>
-          <div className="mt-3 grid gap-x-8 gap-y-1 sm:grid-cols-2">
-            <TextField label="PS5 IP override" value={config.gt7.ps5_ip ?? ""} placeholder="(autodiscover)" onChange={(v) => g("ps5_ip")(v === "" ? null : v)}
-              hint="Skip autodiscovery and target this IP. Leave empty to broadcast and use the first PS5 that responds." />
-            <NumberField label="Heartbeat" unit="s" value={config.gt7.heartbeat_interval_s} step={0.5} min={0.5} max={30} onChange={g("heartbeat_interval_s")}
-              hint="How often (in seconds) we ping the PS5 to keep telemetry flowing. GT7 stops sending if heartbeats stop." />
-            <NumberField label="Discovery timeout" unit="s" value={config.gt7.discovery_timeout_s} step={1} min={1} max={120} onChange={g("discovery_timeout_s")}
-              hint="How long broadcast discovery runs before logging a timeout. Discovery itself never stops, this just controls the warning." />
-            <TextField label="Web host" value={config.web.host} onChange={w("host")}
-              hint='Bind address. "0.0.0.0" exposes the UI to the LAN; "127.0.0.1" restricts to localhost. Restart-required.' />
-            <NumberField label="Web port" value={config.web.port} step={1} min={1} max={65535} onChange={w("port")}
-              hint="HTTP server port. 80 needs CAP_NET_BIND_SERVICE (already granted via the systemd unit). Restart-required." />
-          </div>
-        </details>
         </>
         )}
       </main>

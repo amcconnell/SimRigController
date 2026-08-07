@@ -1,4 +1,11 @@
-import type { Config, ConfigUpdates, ProfilesState, Status } from "../types/config";
+import type {
+  Config,
+  ConfigUpdates,
+  ProfilesState,
+  RecordingStatus,
+  SessionFile,
+  Status,
+} from "../types/config";
 
 async function jsonFetch<T>(
   url: string,
@@ -71,6 +78,25 @@ export async function activateProfile(name: string): Promise<ProfilesState> {
   return jsonFetch<ProfilesState>(`/api/profiles/${encodeURIComponent(name)}/activate`, {
     method: "POST",
   });
+}
+
+export async function listRecordings(): Promise<{
+  status: RecordingStatus | null;
+  sessions: SessionFile[];
+}> {
+  return jsonFetch("/api/recordings");
+}
+
+export async function startRecording(name?: string): Promise<RecordingStatus> {
+  return jsonFetch<RecordingStatus>("/api/recordings/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(name ? { name } : {}),
+  });
+}
+
+export async function stopRecording(): Promise<RecordingStatus> {
+  return jsonFetch<RecordingStatus>("/api/recordings/stop", { method: "POST" });
 }
 
 export async function setMute(muted: boolean): Promise<{ muted: boolean }> {

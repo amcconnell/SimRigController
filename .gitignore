@@ -9,6 +9,10 @@ __pycache__/
 build/
 dist/
 
+# Recorded telemetry sessions. Multi-MB captures of a lap — useful locally,
+# never in the repo. tests/data/ holds the small fixtures that are tracked.
+apps/shaker/recordings/
+
 # Local Claude Code settings
 .claude/settings.local.json
 

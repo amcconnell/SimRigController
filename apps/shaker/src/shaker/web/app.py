@@ -19,6 +19,7 @@ from shaker.gt7 import drivetrain
 from shaker.gt7.client import GT7Client
 from shaker.gt7.protocol import TelemetryPacket
 from shaker.profiles import DEFAULT_PROFILE_NAME
+from shaker.recording import SessionRecorder, list_sessions
 
 log = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ def create_app(
     save_config: Callable[[Config], None],
     gt7: GT7Client,
     bus: AudioBus,
+    recorder: SessionRecorder | None = None,
 ) -> FastAPI:
     app = FastAPI(title="SimRig Shaker")
 
@@ -149,7 +151,35 @@ def create_app(
             "muted": bus.muted,
             "axle": _axle_diagnostics(bus.features, gt7.latest_packet),
             "limiter": _limiter_diagnostics(bus),
+            "recording": recorder.status() if recorder else None,
         }
+
+    @app.get("/api/recordings")
+    def read_recordings() -> dict[str, Any]:
+        return {
+            "status": recorder.status() if recorder else None,
+            "sessions": list_sessions(),
+        }
+
+    @app.post("/api/recordings/start")
+    def start_recording(body: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Begin capturing every packet to a file.
+
+        Deliberately not a config field: recording is something you do, not
+        something the rig is set to, and a flag persisted across restarts would
+        eventually fill the SD card by being forgotten.
+        """
+        if recorder is None:
+            raise HTTPException(status_code=503, detail="recorder unavailable")
+        name = str((body or {}).get("name", "")).strip() or None
+        recorder.start(name=name)
+        return recorder.status()
+
+    @app.post("/api/recordings/stop")
+    def stop_recording() -> dict[str, Any]:
+        if recorder is None:
+            raise HTTPException(status_code=503, detail="recorder unavailable")
+        return recorder.stop()
 
     @app.post("/api/test/vibration")
     def test_vibration() -> dict[str, Any]:

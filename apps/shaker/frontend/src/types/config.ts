@@ -165,6 +165,23 @@ export interface LimiterStatus {
   duty_pct: number;
 }
 
+// Mirrors SessionRecorder.status() in recording.py. Null if the app was
+// constructed without a recorder (tests, and any future headless mode).
+export interface RecordingStatus {
+  recording: boolean;
+  path: string | null;
+  name: string | null;
+  packets: number;
+  bytes: number;
+  seconds: number;
+  error: string | null;
+}
+
+export interface SessionFile {
+  name: string;
+  bytes: number;
+}
+
 export interface Status {
   gt7: GT7Status;
   car: CarIdentity;
@@ -173,6 +190,7 @@ export interface Status {
   muted: boolean;
   axle: AxleStatus;
   limiter: LimiterStatus;
+  recording: RecordingStatus | null;
 }
 
 export interface ProfilesState {
