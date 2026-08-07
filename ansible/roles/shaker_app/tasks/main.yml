@@ -79,6 +79,9 @@
       - "--exclude=.pytest_cache"
       - "--exclude=.ruff_cache"
       - "--exclude=config/"
+      # Recordings are made on the Pi and stay there; syncing would push
+      # the Mac's local captures over them.
+      - "--exclude=recordings/"
   become: false
   notify: Restart shaker service
 

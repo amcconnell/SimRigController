@@ -19,9 +19,10 @@ import { MuteButton } from "./components/MuteButton";
 import { AxlePanel } from "./components/AxlePanel";
 import { MotionPanel } from "./components/MotionPanel";
 import { LimiterPanel } from "./components/LimiterPanel";
+import { RecordPanel } from "./components/RecordPanel";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
-type View = "tuning" | "diagnostics";
+type View = "tuning" | "rig" | "diagnostics";
 
 export function App() {
   const [config, setConfig] = useState<Config | null>(null);
@@ -125,7 +126,7 @@ export function App() {
           <div className="flex items-center gap-3">
             <SaveIndicator state={saveState} error={error} />
             <nav className="flex rounded-lg border border-zinc-800 p-0.5" role="tablist">
-              {(["tuning", "diagnostics"] as View[]).map((v) => (
+              {(["tuning", "rig", "diagnostics"] as View[]).map((v) => (
                 <button
                   key={v}
                   type="button"
@@ -152,10 +153,77 @@ export function App() {
               being compressed, and whether the protocol assumptions still hold from the
               driver's seat. Nothing here changes what the rig does.
             </p>
+            <RecordPanel recording={status?.recording} onError={setError} />
             <LimiterPanel limiter={status?.limiter} />
             <MotionPanel motion={status?.motion} />
             <AxlePanel axle={status?.axle} />
           </>
+        )}
+
+        {view === "rig" && (
+        <>
+        <p className="mb-4 text-xs text-zinc-500">
+          Facts about the machine rather than how you want it to feel — which card, how it is
+          buffered, how many amplifier channels are wired, and where the PS5 is. Profiles
+          neither store nor restore any of it (see <span className="font-mono">RIG_FIELDS</span>
+          {" "}in <span className="font-mono">config.py</span>), so switching profiles leaves this
+          screen alone and nothing here is locked by the read-only default profile.
+        </p>
+
+        <section className="mb-6 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-200">
+              Audio hardware
+            </h2>
+            <span className="text-xs text-zinc-500">restart-required</span>
+          </div>
+          <div className="grid gap-x-8 gap-y-1 sm:grid-cols-2">
+            <TextField label="Audio device" value={A.device} placeholder="default" onChange={a("device")}
+              hint='ALSA / CoreAudio device name. "default" uses the system default; otherwise enter a substring match (e.g. "External Headphones"). Restart-required.' />
+            <NumberField label="Sample rate" value={A.sample_rate} step={1000} min={8000} onChange={a("sample_rate")}
+              hint="Audio sample rate in Hz. 48000 is standard. Changing this restarts the audio stream." />
+            <NumberField label="Buffer" unit="ms" value={A.buffer_ms} step={1} min={1} max={200} onChange={a("buffer_ms")}
+              hint="Audio callback buffer length. Smaller = lower latency but more CPU and risk of underruns. Restart-required." />
+            <NumberField label="Output channels" value={A.output_channels} step={1} min={1} max={2} onChange={a("output_channels")}
+              hint="1 = single mono output, exactly as before. 2 = left drives the front shaker, right drives the rear. Needs two amp channels actually wired — nothing can detect that for you, so run the wiring check after switching. Restart-required." />
+            {stereo && (
+              <NumberField label="Rear trim" value={A.rear_gain_trim} step={0.05} min={0} max={2} onChange={a("rear_gain_trim")}
+                hint="Level correction for the rear shaker only. A seat transmits far more of what it is given than a pedal deck does, so equal electrical power will not feel equal — fix that here and leave the per-effect placement sliders for taste. Belongs to the rig, so it does not move when you switch profiles." />
+            )}
+          </div>
+          {stereo && (
+            <div className="mt-3 flex items-center gap-3 border-t border-zinc-800 pt-3">
+              <TestButton label="wiring" test="wiring" />
+              <p className="text-xs text-zinc-500">
+                Pulses front, pauses, then pulses rear. Bypasses every effect <em>and</em> master
+                gain, rear trim and the limiter — both pulses are identical in software, so any
+                difference you feel is your rig, not your settings. That makes it the right way to
+                judge rear trim, but it will not show the trim you set: verify that with Test rev
+                limit, which is centred and goes through the full chain. If the order is reversed,
+                swap the speaker leads at the amp rather than inverting the sliders.
+              </p>
+            </div>
+          )}
+        </section>
+
+        <details className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 open:pb-3">
+          <summary className="cursor-pointer text-sm font-semibold uppercase tracking-wider text-zinc-200">
+            Network
+          </summary>
+          <div className="mt-3 grid gap-x-8 gap-y-1 sm:grid-cols-2">
+            <TextField label="PS5 IP override" value={config.gt7.ps5_ip ?? ""} placeholder="(autodiscover)" onChange={(v) => g("ps5_ip")(v === "" ? null : v)}
+              hint="Skip autodiscovery and target this IP. Leave empty to broadcast and use the first PS5 that responds." />
+            <NumberField label="Heartbeat" unit="s" value={config.gt7.heartbeat_interval_s} step={0.5} min={0.5} max={30} onChange={g("heartbeat_interval_s")}
+              hint="How often (in seconds) we ping the PS5 to keep telemetry flowing. GT7 stops sending if heartbeats stop." />
+            <NumberField label="Discovery timeout" unit="s" value={config.gt7.discovery_timeout_s} step={1} min={1} max={120} onChange={g("discovery_timeout_s")}
+              hint="How long broadcast discovery runs before logging a timeout. Discovery itself never stops, this just controls the warning." />
+            <TextField label="Web host" value={config.web.host} onChange={w("host")}
+              hint='Bind address. "0.0.0.0" exposes the UI to the LAN; "127.0.0.1" restricts to localhost. Restart-required.' />
+            <NumberField label="Web port" value={config.web.port} step={1} min={1} max={65535} onChange={w("port")}
+              hint="HTTP server port. 80 needs CAP_NET_BIND_SERVICE (already granted via the systemd unit). Restart-required." />
+          </div>
+        </details>
+        </>
         )}
 
         {view === "tuning" && profiles && (
@@ -178,33 +246,8 @@ export function App() {
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-zinc-200">Master</h2>
           <div className="grid gap-x-8 gap-y-1 sm:grid-cols-2">
             <NumberField label="Master gain" value={A.master_gain} step={0.05} min={0} max={2} onChange={a("master_gain")}
-              hint="Overall output multiplier applied after mixing all effects. Drop it if you hear clipping when several effects fire at once." />
-            <TextField label="Audio device" value={A.device} placeholder="default" onChange={a("device")}
-              hint='ALSA / CoreAudio device name. "default" uses the system default; otherwise enter a substring match (e.g. "External Headphones"). Restart-required.' />
-            <NumberField label="Sample rate" value={A.sample_rate} step={1000} min={8000} onChange={a("sample_rate")}
-              hint="Audio sample rate in Hz. 48000 is standard. Changing this restarts the audio stream." />
-            <NumberField label="Buffer" unit="ms" value={A.buffer_ms} step={1} min={1} max={200} onChange={a("buffer_ms")}
-              hint="Audio callback buffer length. Smaller = lower latency but more CPU and risk of underruns. Restart-required." />
-            <NumberField label="Output channels" value={A.output_channels} step={1} min={1} max={2} onChange={a("output_channels")}
-              hint="1 = single mono output, exactly as before. 2 = left drives the front shaker, right drives the rear. Needs two amp channels actually wired — nothing can detect that for you, so run the wiring check after switching. Restart-required." />
-            {stereo && (
-              <NumberField label="Rear trim" value={A.rear_gain_trim} step={0.05} min={0} max={2} onChange={a("rear_gain_trim")}
-                hint="Level correction for the rear shaker only. A seat transmits far more of what it is given than a pedal deck does, so equal electrical power will not feel equal — fix that here and leave the per-effect placement sliders for taste." />
-            )}
+              hint="Overall output multiplier applied after mixing all effects, before the limiter. Watch Diagnostics → Output limiter rather than guessing: if it is reducing through most corners, this is too high and the rig is being compressed rather than driven." />
           </div>
-          {stereo && (
-            <div className="mt-3 flex items-center gap-3 border-t border-zinc-800 pt-3">
-              <TestButton label="wiring" test="wiring" />
-              <p className="text-xs text-zinc-500">
-                Pulses front, pauses, then pulses rear. Bypasses every effect <em>and</em> master
-                gain, rear trim and the limiter — both pulses are identical in software, so any
-                difference you feel is your rig, not your settings. That makes it the right way to
-                judge rear trim, but it will not show the trim you set: verify that with Test rev
-                limit, which is centred and goes through the full chain. If the order is reversed,
-                swap the speaker leads at the amp rather than inverting the sliders.
-              </p>
-            </div>
-          )}
         </section>
 
         <div className="space-y-3">
@@ -347,23 +390,6 @@ export function App() {
 
         </fieldset>
 
-        <details className="mt-6 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 open:pb-3">
-          <summary className="cursor-pointer text-sm font-semibold uppercase tracking-wider text-zinc-200">
-            Advanced (GT7 / web)
-          </summary>
-          <div className="mt-3 grid gap-x-8 gap-y-1 sm:grid-cols-2">
-            <TextField label="PS5 IP override" value={config.gt7.ps5_ip ?? ""} placeholder="(autodiscover)" onChange={(v) => g("ps5_ip")(v === "" ? null : v)}
-              hint="Skip autodiscovery and target this IP. Leave empty to broadcast and use the first PS5 that responds." />
-            <NumberField label="Heartbeat" unit="s" value={config.gt7.heartbeat_interval_s} step={0.5} min={0.5} max={30} onChange={g("heartbeat_interval_s")}
-              hint="How often (in seconds) we ping the PS5 to keep telemetry flowing. GT7 stops sending if heartbeats stop." />
-            <NumberField label="Discovery timeout" unit="s" value={config.gt7.discovery_timeout_s} step={1} min={1} max={120} onChange={g("discovery_timeout_s")}
-              hint="How long broadcast discovery runs before logging a timeout. Discovery itself never stops, this just controls the warning." />
-            <TextField label="Web host" value={config.web.host} onChange={w("host")}
-              hint='Bind address. "0.0.0.0" exposes the UI to the LAN; "127.0.0.1" restricts to localhost. Restart-required.' />
-            <NumberField label="Web port" value={config.web.port} step={1} min={1} max={65535} onChange={w("port")}
-              hint="HTTP server port. 80 needs CAP_NET_BIND_SERVICE (already granted via the systemd unit). Restart-required." />
-          </div>
-        </details>
         </>
         )}
       </main>

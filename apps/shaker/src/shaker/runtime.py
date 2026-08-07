@@ -13,7 +13,9 @@ from shaker import config as cfg_mod
 from shaker.audio.bus import AudioBus
 from shaker.audio.stream import AudioOutput
 from shaker.config import Config
+from shaker.gt7.protocol import TelemetryPacket
 from shaker.gt7.client import GT7Client
+from shaker.recording import SessionRecorder
 from shaker.web.app import create_app
 
 log = logging.getLogger(__name__)
@@ -38,9 +40,19 @@ async def run(config_path: Path = cfg_mod.DEFAULT_CONFIG_PATH) -> int:
 
     bus = AudioBus(state.config.audio)
     audio = AudioOutput(bus)
+    recorder = SessionRecorder()
+
+    def on_packet(packet: TelemetryPacket) -> None:
+        # Recording first, and unconditionally. The rejection gates live inside
+        # push_packet (menus, pauses, frozen payloads) and are themselves code a
+        # replay should be able to exercise, so a recording that only captured
+        # packets the app accepted could never be used to test them.
+        recorder.on_packet(packet)
+        bus.push_packet(packet)
+
     gt7 = GT7Client(
         state.config.gt7,
-        on_packet=bus.push_packet,
+        on_packet=on_packet,
         on_stale=bus.reset_features,
     )
 
@@ -80,7 +92,9 @@ async def run(config_path: Path = cfg_mod.DEFAULT_CONFIG_PATH) -> int:
         if "audio" in changed_sections:
             bus.update_audio_config(new.audio)
 
-    fastapi_app = create_app(get_config=get_config, save_config=save_config, gt7=gt7, bus=bus)
+    fastapi_app = create_app(
+        get_config=get_config, save_config=save_config, gt7=gt7, bus=bus, recorder=recorder
+    )
     ucfg = uvicorn.Config(
         fastapi_app,
         host=state.config.web.host,
@@ -118,6 +132,7 @@ async def run(config_path: Path = cfg_mod.DEFAULT_CONFIG_PATH) -> int:
                 t.cancel()
         gt7.stop()
         audio.stop()
+        recorder.stop()
         server.should_exit = True
 
         # Give workers a brief grace period to shut down naturally. Uvicorn's
