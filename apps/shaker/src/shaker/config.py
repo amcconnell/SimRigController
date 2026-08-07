@@ -24,6 +24,35 @@ class WebConfig:
     port: int = 8765
 
 
+# Fields that describe the machine rather than the tuning.
+#
+# Everything else in AudioConfig is taste: what an event should feel like, which
+# is the thing worth naming, switching and sharing. These five are facts about
+# the hardware — which card, how it is buffered, how many amplifier channels are
+# wired, and how unequally the two mounting points couple to the driver. They do
+# not stop being true because you switched from a GT3 setup to a road car.
+#
+# Profiles therefore neither store nor restore them. Before this split,
+# activating a profile re-litigated the rig: switching to `default` reset a
+# stereo rig to one channel and pointed it back at the "default" audio device,
+# and a published profile would have tried to reconfigure someone else's
+# hardware. Keeping the line here is also what makes profiles portable later —
+# a profile can only mean the same thing on another rig if the rig-specific
+# normalisation is somewhere else.
+#
+# `master_gain` is deliberately NOT in this set. It is partly a rig property
+# (it is set against the amplifier's input sensitivity) but it is also the
+# primary intensity control, and users reasonably expect a quiet profile and a
+# loud one to differ by it.
+RIG_FIELDS = frozenset({
+    "device",
+    "sample_rate",
+    "buffer_ms",
+    "output_channels",
+    "rear_gain_trim",
+})
+
+
 @dataclass(frozen=True)
 class AudioConfig:
     device: str = "default"

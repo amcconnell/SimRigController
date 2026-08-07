@@ -172,13 +172,23 @@ export function App() {
 
         {view === "tuning" && (
         <>
-        <fieldset disabled={isDefaultProfile} className="space-y-6 disabled:opacity-60">
-
-        <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-zinc-200">Master</h2>
+        {/* Rig, not tuning — deliberately outside the profile fieldset.
+            These five fields describe the machine: which card, how it is
+            buffered, how many amplifier channels are wired, and how unequally
+            the two mounting points couple to you. Profiles neither store nor
+            restore them (see RIG_FIELDS in config.py), so they stay editable
+            even on the read-only default profile, where previously you could
+            not set your own sound card without first creating a profile. */}
+        <section className="mb-6 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+          <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-200">Rig</h2>
+            <span className="text-xs text-zinc-500">shared by every profile</span>
+          </div>
+          <p className="mb-3 text-xs text-zinc-500">
+            Facts about your hardware rather than how you want it to feel. Switching profiles
+            leaves these alone.
+          </p>
           <div className="grid gap-x-8 gap-y-1 sm:grid-cols-2">
-            <NumberField label="Master gain" value={A.master_gain} step={0.05} min={0} max={2} onChange={a("master_gain")}
-              hint="Overall output multiplier applied after mixing all effects. Drop it if you hear clipping when several effects fire at once." />
             <TextField label="Audio device" value={A.device} placeholder="default" onChange={a("device")}
               hint='ALSA / CoreAudio device name. "default" uses the system default; otherwise enter a substring match (e.g. "External Headphones"). Restart-required.' />
             <NumberField label="Sample rate" value={A.sample_rate} step={1000} min={8000} onChange={a("sample_rate")}
@@ -189,7 +199,7 @@ export function App() {
               hint="1 = single mono output, exactly as before. 2 = left drives the front shaker, right drives the rear. Needs two amp channels actually wired — nothing can detect that for you, so run the wiring check after switching. Restart-required." />
             {stereo && (
               <NumberField label="Rear trim" value={A.rear_gain_trim} step={0.05} min={0} max={2} onChange={a("rear_gain_trim")}
-                hint="Level correction for the rear shaker only. A seat transmits far more of what it is given than a pedal deck does, so equal electrical power will not feel equal — fix that here and leave the per-effect placement sliders for taste." />
+                hint="Level correction for the rear shaker only. A seat transmits far more of what it is given than a pedal deck does, so equal electrical power will not feel equal — fix that here and leave the per-effect placement sliders for taste. Belongs to the rig, so it does not move when you switch profiles." />
             )}
           </div>
           {stereo && (
@@ -205,6 +215,16 @@ export function App() {
               </p>
             </div>
           )}
+        </section>
+
+        <fieldset disabled={isDefaultProfile} className="space-y-6 disabled:opacity-60">
+
+        <section className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-zinc-200">Master</h2>
+          <div className="grid gap-x-8 gap-y-1 sm:grid-cols-2">
+            <NumberField label="Master gain" value={A.master_gain} step={0.05} min={0} max={2} onChange={a("master_gain")}
+              hint="Overall output multiplier applied after mixing all effects, before the limiter. Watch Diagnostics → Output limiter rather than guessing: if it is reducing through most corners, this is too high and the rig is being compressed rather than driven." />
+          </div>
         </section>
 
         <div className="space-y-3">

@@ -75,7 +75,7 @@ def create_app(
             raise HTTPException(status_code=400, detail="profile name required")
         state = profiles_mod.load_state()
         try:
-            source_audio = profiles_mod.get_audio(state, source)
+            source_audio = profiles_mod.get_audio(state, source, get_config().audio)
             profiles_mod.create(state, name, source_audio)
         except (KeyError, ValueError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -121,7 +121,7 @@ def create_app(
         return {"active": state["active"], "names": profiles_mod.list_names(state)}
 
     def _activate(state: dict[str, Any], name: str) -> None:
-        audio = profiles_mod.get_audio(state, name)
+        audio = profiles_mod.get_audio(state, name, get_config().audio)
         new_live = profiles_mod.apply_to_live_config(audio, get_config())
         save_config(new_live)  # triggers watcher reload
         state["active"] = name

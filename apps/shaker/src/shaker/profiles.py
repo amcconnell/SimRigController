@@ -16,11 +16,11 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any
 
-from shaker.config import AudioConfig, Config
+from shaker.config import RIG_FIELDS, AudioConfig, Config
 
 DEFAULT_PROFILE_NAME = "default"
 PROFILES_PATH = Path(__file__).resolve().parent.parent.parent / "config" / "profiles.json"
@@ -60,19 +60,37 @@ def list_names(state: dict[str, Any]) -> list[str]:
     return [DEFAULT_PROFILE_NAME, *state.get("profiles", {}).keys()]
 
 
-def get_audio(state: dict[str, Any], name: str) -> AudioConfig:
-    """Resolve a profile name to its AudioConfig. Default → code-shipped defaults."""
+def _taste_only(audio: AudioConfig) -> dict[str, Any]:
+    """A profile's stored form: everything except the rig fields."""
+    return {k: v for k, v in asdict(audio).items() if k not in RIG_FIELDS}
+
+
+def get_audio(state: dict[str, Any], name: str, live: AudioConfig) -> AudioConfig:
+    """Resolve a profile name to an AudioConfig, keeping the rig as it is.
+
+    Rig fields always come from `live` and never from the profile — see
+    RIG_FIELDS. This applies to `default` too: reverting to the shipped tuning
+    should not also revert which sound card you own or how many amplifier
+    channels you wired.
+
+    Profiles written before the split still carry rig keys; they are ignored
+    here and dropped the next time the profile is saved.
+    """
     if name == DEFAULT_PROFILE_NAME:
-        return AudioConfig()
-    profiles = state.get("profiles", {})
-    if name not in profiles:
-        raise KeyError(f"unknown profile: {name!r}")
-    stored = profiles[name]
-    if not isinstance(stored, dict):
-        raise ValueError(f"profile {name!r} is not a dict")
-    # Filter unknown keys so schema additions (new audio fields) survive.
-    fields = {f.name for f in AudioConfig.__dataclass_fields__.values()}
-    return AudioConfig(**{k: v for k, v in stored.items() if k in fields})
+        base = AudioConfig()
+    else:
+        profiles = state.get("profiles", {})
+        if name not in profiles:
+            raise KeyError(f"unknown profile: {name!r}")
+        stored = profiles[name]
+        if not isinstance(stored, dict):
+            raise ValueError(f"profile {name!r} is not a dict")
+        # Filter unknown keys so schema additions (new audio fields) survive.
+        fields = {f.name for f in AudioConfig.__dataclass_fields__.values()}
+        base = AudioConfig(**{
+            k: v for k, v in stored.items() if k in fields and k not in RIG_FIELDS
+        })
+    return replace(base, **{f: getattr(live, f) for f in RIG_FIELDS})
 
 
 def create(
@@ -89,7 +107,7 @@ def create(
     profiles = state.setdefault("profiles", {})
     if name in profiles:
         raise ValueError(f"profile {name!r} already exists")
-    profiles[name] = asdict(source_audio)
+    profiles[name] = _taste_only(source_audio)
     return state
 
 
@@ -141,7 +159,7 @@ def update_active_audio(state: dict[str, Any], audio: AudioConfig) -> dict[str, 
     if active not in profiles:
         # Stale active pointer; the caller is editing default-ish state.
         return state
-    profiles[active] = asdict(audio)
+    profiles[active] = _taste_only(audio)
     return state
 
 
