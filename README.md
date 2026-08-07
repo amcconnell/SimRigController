@@ -17,19 +17,70 @@ PS5 (GT7)  ──UDP/33740──►  Pi 4 (shaker app)  ──audio──►  Fo
                             (http://simrig-pi.local)
 ```
 
-Inside the Pi, one Python process runs everything: an asyncio UDP client that decrypts (Salsa20) and parses GT7 packets, a FastAPI web app that hosts the tuning UI, and a PortAudio thread that mixes the configured effects into a single mono channel.
+Inside the Pi, one Python process runs everything: an asyncio UDP client that decrypts (Salsa20) and parses GT7 packets, a FastAPI web app that hosts the tuning UI, and a PortAudio thread that mixes the configured effects.
+
+Output is mono by default. Set `output_channels = 2` and the mix splits front/rear —
+channel 0 (left) drives a front shaker, channel 1 (right) a rear one. Road vibration and
+wheel slip are split by axle from real per-corner telemetry; the remaining effects are
+placed with a per-effect bias slider. Setting it back to 1 reproduces the single-channel
+output exactly, so it is a genuine escape hatch rather than a re-tune.
 
 ---
 
 ## Hardware
 
 - **Raspberry Pi 4** (other Pi models work, but the deploy targets aarch64).
-- **Bass shaker amp** — the project's current setup uses a Fosi Audio TP-02 mono amp; anything that takes a line-level input and drives a shaker works.
-- **One or more bass shakers**, wired to the amp.
-- **3.5 mm to RCA cable** from the Pi's analog jack to the amp.
+- **Bass shaker amp** — anything taking a line-level input and driving a shaker works.
+  For front/rear you need *two amplifier channels*. Count the **speaker binding posts, not
+  the input jacks**: mono subwoofer amps commonly have two RCA inputs that are summed
+  internally to one channel, which merges front and rear back together.
+- **One or two bass shakers.** Two only helps if they are mounted somewhere your body can
+  tell apart — a pedal deck and a seat work well, since that is feet versus back rather
+  than asking you to localise a 50 Hz wave in space. On a bridged (BTL) stereo amp, wire
+  **one shaker per channel**; two in parallel halves the impedance below what most boards
+  tolerate.
+- **A USB DAC** — see [Audio output](#audio-output). Worth having.
 - **Ethernet or Wi-Fi** on the Pi, on the same LAN as the PS5.
 
-A USB DAC isn't required — the Pi's onboard analog jack is fine for shakers.
+---
+
+## Audio output
+
+The Pi's 3.5 mm jack works, but it is a **PWM-derived headphone output at roughly 0.4 V
+RMS**, where a line output is about 2 V. Most amplifiers need something near 1 V to reach
+rated power, so driving one directly means running every gain stage flat out and still
+wanting more. A **class-compliant USB DAC** (~$10–30) is the fix; one with RCA outputs also
+removes the 3.5 mm splitter from the chain, which is worth doing on its own.
+
+Set the device by name substring in the UI (`aplay -l` to find it). Restart-required, so
+the app bounces itself.
+
+**USB adapters routinely enumerate attenuated.** The C-Media dongle used here comes up at
+**-20 dB** — quieter than the Pi's own jack, and indistinguishable from "the DAC made no
+difference", because nothing in the app can see it. The `simrig-alsa` unit installed by the
+deploy sets output levels at boot, before the shaker service starts; see
+`simrig_alsa_levels` in the `shaker_app` role. If a new adapter is quiet, check
+`amixer -c <card> scontrols` first.
+
+**Gain structure**, in order:
+
+1. **Source at unity** — the DAC's own mixer at 100%, so the full converter range is used.
+2. **Absolute level at the amplifier.** Set it once and mark the knob: everything tuned in
+   software afterwards is relative to it.
+3. **`master_gain` below the limiter.** If peaks sit at the ceiling the limiter clips the
+   top off every transient, and the contrast between road texture and a kerb strike — the
+   thing the effects exist to convey — goes flat. Around 0.5 suits a line-level source.
+4. **`rear_gain_trim`** for the mechanical asymmetry between the two mounting points, then
+   the per-effect bias sliders for placement.
+
+Judge trim with **Test wiring**: both its pulses are identical in software and bypass
+master gain, trim and the limiter, so any difference you feel is the rig rather than the
+settings. Verify the trim you then set with **Test rev limit**, which is centred and goes
+through the full chain.
+
+**Run Test wiring before trusting any routing.** Nothing in software can detect reversed
+speaker leads, and a swapped pair inverts every routing decision in a way that reads as
+"feels subtly wrong" rather than as a fault.
 
 ---
 
