@@ -182,9 +182,61 @@ When it finishes, open **http://simrig-pi.local** on any LAN device.
    swapped pair inverts every routing decision in a way that reads as "feels subtly wrong"
    rather than as a fault.
 
-**Profiles** are named snapshots of the audio config. The built-in `default` profile lives in code and can't be edited or deleted. Use profiles to keep separate tunings per car or per driver — switching activates a profile's settings instantly (the service restarts only if you change the audio device, sample rate, or buffer size).
+**Profiles** are named snapshots of the *tuning*. The built-in `default` profile lives in
+code and can't be edited or deleted. Use them to keep separate tunings per car or per driver;
+switching activates one instantly.
 
-**Mute** toggles output without changing any config — useful for phone calls. It's in-memory only and resets if the service restarts.
+Profiles deliberately do **not** carry the **Rig** screen — audio device, sample rate, buffer,
+output channels and rear trim. Those describe the machine rather than how you want it to feel,
+and they do not stop being true because you switched from a GT3 setup to a road car. Keeping
+the line there is what stops activating a profile from resetting a stereo rig to mono, and
+what would let a profile mean the same thing on somebody else's hardware.
+
+**Mute** toggles output without changing any config — useful for phone calls. It's in-memory
+only and resets if the service restarts.
+
+---
+
+## Measuring instead of guessing
+
+Tuning by feel has a specific failure mode: you are always comparing against a memory of a
+different track, in a different car, days ago. Two tools exist to replace that.
+
+**Diagnostics → Output limiter** reports gain reduction in dB and the share of recent time
+spent reducing. Occasional reduction on the biggest hits is the limiter doing its job;
+reducing through most corners means the mix is being compressed rather than driven, and the
+symptom is not distortion but sameness — kerbs, shifts and road texture all arriving at one
+level. That reads as "flat", whose obvious remedy is more gain, which makes it worse.
+
+**Diagnostics → Session recording** captures every packet at full rate to
+`recordings/session-*.jsonl`. Whole packets, including the menu and paused frames the app
+itself discards, so a replay exercises the same gates the live path does. It stops itself at
+256 MB.
+
+`scripts/replay.py` then renders a recording back through the real DSP offline — no audio
+device involved — so the same lap can be measured under two settings:
+
+```sh
+python scripts/replay.py recordings/session-20260807-1830.jsonl
+python scripts/replay.py <file> --set master_gain=1.0
+python scripts/replay.py <file> --profile "Gr.3" --against "road car"
+python scripts/replay.py <file> --wav /tmp/lap.wav
+```
+
+Packets are scheduled by `packet_id`, GT7's physics frame counter, so replay is immune to
+network jitter and two runs of one file are bit-identical.
+
+Watch **crest** — peak over RMS — rather than peak. The limiter pins peak to the ceiling by
+construction, so two settings that feel completely different report the same peak. Crest is
+what collapses when a mix is being compressed:
+
+```
+delta (B - A)
+   ch0: rms  +1.76 dB   crest  -1.65 dB
+limiter: duty +52.0 pts   peak +18.06 dB
+
+B is louder but flatter — dynamic range traded for level.
+```
 
 ---
 
