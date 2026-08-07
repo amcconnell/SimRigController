@@ -55,19 +55,17 @@ line output is about 2 V. A **class-compliant USB DAC** (~$10–30) gives you th
 one with RCA outputs also removes the 3.5 mm splitter from the chain, which is worth doing
 on its own.
 
-Expect that to improve *quality*, though — not level. **Check your amplifier's input
-sensitivity before assuming it will get louder.** The V1.0G reaches rated output from
-280 mV, which the Pi's own jack already clears, so swapping in a 2 V source changed nothing
-about how hard the amp could be driven. Sensitivities that low are common on small class-D
-boards and they invert the usual advice: the risk is not too little drive but too much.
-A 2 V source feeding a 280 mV input with the volume at maximum overdrives it several times
-over, and the amp clips long before the knob runs out of travel.
+On this rig the DAC was what finally produced usable output. Worth saying plainly, because
+the datasheets do not predict that: the V1.0G is specified to reach rated output from
+280 mV and the Pi's jack nominally clears that, so on paper the converter should have been
+the only thing that changed. It was not. Treat published sensitivity figures as best-case
+numbers and the Pi's PWM level as approximate — neither survives contact with a real rig,
+and the amplifier's own volume control is the only calibration that counts.
 
-That failure is easy to misread, because clipped low frequency content does not sound
-distorted so much as *dense*. The peaks are gone, everything arrives at one level, and the
-rig feels dull — which invites turning it up further. If the top third of the volume
-control makes no audible difference, that is what is happening; back it off to where output
-just begins to drop.
+Two things do come free with the swap. Getting off the PWM output improves low-level
+linearity, which is where quiet road texture lives; and a DAC with **RCA outputs** deletes
+the 3.5 mm splitter, a part that already cost an evening here when one conductor turned out
+to be dead and presented as the software failing to separate channels.
 
 Set the device by name substring in the UI (`aplay -l` to find it). Restart-required, so
 the app bounces itself.
