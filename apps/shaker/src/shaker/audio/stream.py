@@ -36,6 +36,17 @@ _LIMIT_RELEASE_S = 0.25
 # gain instantly introduces a 0.227 seam, and this leaves 0.000% clipped with
 # a seam of 0.0116 — identical to the largest ordinary step inside a block.
 _LIMIT_ATTACK_S = 0.001
+# Below this the limiter counts as working, for the duty-cycle readout. A
+# reduction this small is inaudible on its own, but the release tail is
+# genuinely the limiter still holding gain down, so it is counted rather than
+# gated out — the number is meant to answer "how much of the lap is being
+# compressed", and the tail is part of that.
+_LIMIT_ACTIVE_GAIN = 0.99
+# Duty averaging window. Long enough that one hard corner does not read as a
+# permanent 100%, short enough to respond within a lap.
+_LIMIT_DUTY_TAU_S = 5.0
+# Peak-hold decay, so a single transient survives to the UI's next poll.
+_LIMIT_HOLD_TAU_S = 3.0
 # Mute ramp. Short enough to feel instant, long enough not to be a step.
 _MUTE_TAU_S = 0.015
 
@@ -81,6 +92,11 @@ class AudioOutput:
         # Gain-riding state, carried across callbacks.
         self._limiter_gain = 1.0
         self._mute_gain = 1.0
+        # Smoothed limiter activity for the diagnostics screen. Owned here and
+        # published to the bus rather than accumulated on the bus, so the audio
+        # thread stays the only writer of its own state.
+        self._limit_duty = 0.0
+        self._limit_hold = 1.0
         self._device = cfg.device if cfg.device != "default" else None
         # Fixed for the life of the stream — output_channels is restart-required.
         self._out_channels = 2 if cfg.output_channels == 2 else 1
@@ -199,6 +215,10 @@ class AudioOutput:
             self._wiring_frames = 0
             self._wiring_phase = 0.0
         if self._wiring_frames >= 0 and self._render_wiring(outdata, frames):
+            # The wiring pulse bypasses the limiter by design. Publishing "no
+            # reduction" lets the readout decay instead of freezing mid-check
+            # on whatever the mix happened to be doing beforehand.
+            self._publish_limiter(frames / self._sample_rate, 1.0)
             return
 
         cfg = self._bus.audio_config
@@ -429,6 +449,9 @@ class AudioOutput:
             outdata[:] = 0.0
             self._bus.meter_front = 0.0
             self._bus.meter_rear = 0.0
+            # Silence is not the limiter working, and reporting it as such
+            # would make the readout peg while muted.
+            self._publish_limiter(block_s, 1.0)
             return
 
         peak = max(float(np.max(np.abs(b))) for b in bufs)
@@ -449,6 +472,12 @@ class AudioOutput:
                 limit_prev, self._limiter_gain, frames, endpoint=False, dtype=np.float32
             )
 
+        # Read before the mute ramp is folded in below, or fading to silence
+        # would be indistinguishable from a 60 dB limiter reduction. Attack
+        # ramps down to the new gain and release ramps up from the old one, so
+        # the lower of the two endpoints is the block's minimum either way.
+        self._publish_limiter(block_s, min(limit_prev, self._limiter_gain))
+
         if mute_prev != 1.0 or self._mute_gain != 1.0:
             np.multiply(
                 gain,
@@ -466,6 +495,34 @@ class AudioOutput:
 
         self._bus.meter_front = float(np.max(np.abs(bufs[0])))
         self._bus.meter_rear = float(np.max(np.abs(bufs[1]))) if len(bufs) > 1 else 0.0
+
+    def _publish_limiter(self, block_s: float, gain: float) -> None:
+        """Push limiter activity to the bus for the diagnostics screen.
+
+        Smoothed on this side rather than in the reader, because the sample
+        rates do not overlap: the limiter acts once per block — about 50 Hz at
+        the default buffer — and the UI polls twice a second. Sampling the
+        instantaneous gain would miss the great majority of reductions and
+        report a limiter that essentially never runs, which is the opposite of
+        what the screen is for.
+
+        `gain` is a linear multiplier where 1.0 is no reduction.
+        """
+        self._bus.limit_gain = gain
+
+        active = 1.0 if gain < _LIMIT_ACTIVE_GAIN else 0.0
+        da = _alpha(block_s, _LIMIT_DUTY_TAU_S)
+        self._limit_duty = da * active + (1.0 - da) * self._limit_duty
+        self._bus.limit_duty = self._limit_duty
+
+        # Peak-hold: latch instantly, decay back toward unity. Without the
+        # latch a 50 ms reduction between two polls is never seen at all.
+        if gain < self._limit_hold:
+            self._limit_hold = gain
+        else:
+            ha = _alpha(block_s, _LIMIT_HOLD_TAU_S)
+            self._limit_hold = ha + (1.0 - ha) * self._limit_hold
+        self._bus.limit_hold = self._limit_hold
 
     def _render_wiring(self, outdata, frames: int) -> bool:  # type: ignore[no-untyped-def]
         """One channel at a time, bypassing the mix entirely.

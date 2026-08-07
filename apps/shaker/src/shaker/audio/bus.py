@@ -213,6 +213,16 @@ class AudioBus:
         self.meter_front: float = 0.0
         self.meter_rear: float = 0.0
 
+        # Output limiter activity, same ownership and same reasoning. Linear
+        # gains where 1.0 is no reduction, already smoothed by the audio thread
+        # — see _publish_limiter in stream.py for why the smoothing cannot live
+        # on this side. `limit_gain` is the last block, `limit_hold` the deepest
+        # recent reduction, `limit_duty` the fraction of recent time spent
+        # reducing at all (0..1).
+        self.limit_gain: float = 1.0
+        self.limit_hold: float = 1.0
+        self.limit_duty: float = 0.0
+
     def update_audio_config(self, cfg: AudioConfig) -> None:
         self.audio_config = cfg
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
@@ -147,6 +148,7 @@ def create_app(
             "motion": _motion_diagnostics(bus.features),
             "muted": bus.muted,
             "axle": _axle_diagnostics(bus.features, gt7.latest_packet),
+            "limiter": _limiter_diagnostics(bus),
         }
 
     @app.post("/api/test/vibration")
@@ -221,6 +223,46 @@ def _motion_diagnostics(f: TelemetryFeatures) -> dict[str, Any]:
         "surge": f.surge,
         "long_accel": f.long_accel,
         "lat_accel": f.lat_accel,
+    }
+
+
+def _limiter_diagnostics(bus: AudioBus) -> dict[str, Any]:
+    """How hard the output limiter is working, in dB of gain reduction.
+
+    The bus carries linear gains because that is what the audio path applies;
+    dB is what the number means to a person, so the conversion happens here
+    rather than in the browser.
+
+    This exists because the limiter's failure mode is silent. Driven too hard
+    it stops being a safety net and becomes a compressor, and the symptom is
+    not distortion but sameness — kerbs, shifts and road texture all arriving
+    at one level. That reads as "the rig feels flat", which is exactly the
+    complaint most likely to be answered by turning the gain up again.
+    """
+    def db(gain: float) -> float:
+        # Floor the input rather than the output: log10(0) is not an error we
+        # want reaching the UI as an Infinity that JSON cannot encode.
+        #
+        # max() on the way out is not redundant with it. The limiter never
+        # applies gain above unity, so reduction is never negative — but
+        # -20*log10(1.0) is -0.0, which survives rounding and JSON and renders
+        # as "-0.0 dB" on an idle rig.
+        return max(0.0, -20.0 * math.log10(max(gain, 1e-6)))
+
+    now = db(bus.limit_gain)
+    # The hold is always at least as deep as the current reduction by
+    # construction, but the two fields are written on consecutive lines of the
+    # audio callback and read here without a lock. On a fast ramp this can
+    # sample one before and one after an update and report a peak shallower
+    # than the present value — harmless as a measurement, but it renders as an
+    # obviously broken meter. Clamping costs nothing and cannot mask a real
+    # fault, since the invariant is one-directional.
+    peak = max(now, db(bus.limit_hold))
+
+    return {
+        "reduction_db": round(now, 2),
+        "peak_reduction_db": round(peak, 2),
+        "duty_pct": round(100.0 * bus.limit_duty, 1),
     }
 
 

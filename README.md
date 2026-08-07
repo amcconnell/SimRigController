@@ -85,6 +85,10 @@ deploy sets output levels at boot, before the shaker service starts; see
 3. **`master_gain` below the limiter.** If peaks sit at the ceiling the limiter clips the
    top off every transient, and the contrast between road texture and a kerb strike — the
    thing the effects exist to convey — goes flat. Around 0.5 suits a line-level source.
+   **Diagnostics → Output limiter** measures this rather than leaving it to feel: it reports
+   gain reduction in dB and the share of recent time spent reducing. Occasional reduction on
+   the biggest hits is the limiter doing its job; reducing through most corners means the
+   rig is being compressed, and the fix is less `master_gain` and more amplifier.
 4. **`rear_gain_trim`** for the mechanical asymmetry between the two mounting points, then
    the per-effect bias sliders for placement.
 
