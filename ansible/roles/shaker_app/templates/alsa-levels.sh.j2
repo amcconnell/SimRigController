@@ -1,0 +1,33 @@
+#!/bin/sh
+# Set output mixer levels at boot. Managed by Ansible — edit the role, not this.
+#
+# USB audio adapters routinely enumerate with their output attenuated; the
+# C-Media dongle on this rig comes up at -20 dB, which is quieter than the Pi's
+# own headphone jack and looks exactly like "the DAC made no difference". The
+# software cannot see it: every level the app reports is the buffer it computed,
+# upstream of the DAC entirely.
+#
+# The source belongs at unity so the full converter range is used and level is
+# set downstream at the amplifier.
+#
+# Cards are matched by name rather than index — index depends on enumeration
+# order and changes when anything else is plugged in.
+
+set -u
+
+{% for c in simrig_alsa_levels %}
+card="$(cat /proc/asound/cards 2>/dev/null \
+        | grep -i -- '{{ c.card_match }}' \
+        | head -1 | awk '{print $1}')"
+if [ -n "${card:-}" ]; then
+    if amixer -c "$card" sset '{{ c.control }}' '{{ c.value }}' >/dev/null 2>&1; then
+        echo "set card $card '{{ c.control }}' to {{ c.value }} (matched '{{ c.card_match }}')"
+    else
+        echo "card $card has no control '{{ c.control }}' — skipping" >&2
+    fi
+else
+    echo "no card matching '{{ c.card_match }}' — skipping" >&2
+fi
+{% endfor %}
+
+exit 0

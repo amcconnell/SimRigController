@@ -6,3 +6,8 @@
   ansible.builtin.systemd:
     name: "{{ simrig_service_name }}.service"
     state: restarted
+
+- name: Reapply ALSA levels
+  ansible.builtin.systemd:
+    name: simrig-alsa.service
+    state: restarted

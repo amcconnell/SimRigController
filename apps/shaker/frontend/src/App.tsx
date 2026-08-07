@@ -193,8 +193,12 @@ export function App() {
             <div className="mt-3 flex items-center gap-3 border-t border-zinc-800 pt-3">
               <TestButton label="wiring" test="wiring" />
               <p className="text-xs text-zinc-500">
-                Pulses front, pauses, then pulses rear — bypassing every effect. If the order is
-                reversed, swap the speaker leads at the amp rather than inverting the sliders.
+                Pulses front, pauses, then pulses rear. Bypasses every effect <em>and</em> master
+                gain, rear trim and the limiter — both pulses are identical in software, so any
+                difference you feel is your rig, not your settings. That makes it the right way to
+                judge rear trim, but it will not show the trim you set: verify that with Test rev
+                limit, which is centred and goes through the full chain. If the order is reversed,
+                swap the speaker leads at the amp rather than inverting the sliders.
               </p>
             </div>
           )}
@@ -237,7 +241,7 @@ export function App() {
             onGainChange={a("engine_rumble_gain")}
             bias={stereo ? A.engine_rumble_bias : undefined}
             onBiasChange={a("engine_rumble_bias")}
-            biasHint="Taste, not physics — GT7 sends no engine-position field, so this cannot be derived per car. Mild rear by default because engine and drivetrain thrum reaches a driver through the floor and seat rather than the pedals."
+            biasHint="Always yours — engine placement is deliberately not taken from the car database, even though it knows where the engine sits. Measured on a front-engine car with a seat shaker: routing by engine position sends the most continuous effect in the mix to the pedals, and it belongs in the seat. Thrum reaches you through the floor and seat back whatever end the engine is at."
             testButton={<TestButton label="sweep" test="engine_sweep" variant="header" />}
           >
             <NumberField label="RPM divisor" value={A.engine_rumble_rpm_divisor} step={5} min={10} max={240} onChange={a("engine_rumble_rpm_divisor")}
@@ -316,7 +320,7 @@ export function App() {
             onGainChange={a("gear_shift_gain")}
             bias={stereo ? A.gear_shift_bias : undefined}
             onBiasChange={a("gear_shift_bias")}
-            biasHint="Driveline shock reacts through the driven axle. With drivetrain routing on, the car database picks the end and this slider sets only how hard — so a front-wheel-drive car thumps the pedals instead of the seat."
+            biasHint="Driveline shock reacts through the driven axle. NOTE: with \u201cUse car drivetrain\u201d on, the database picks the end and only the *magnitude* of this slider is used — so dragging it toward Front will not move a rear-drive car forward. Turn that option off if you want this slider to be authoritative."
             testButton={<TestButton label="shift" test="gear_shift" variant="header" />}
           >
             <NumberField label="Frequency" unit="Hz" value={A.gear_shift_freq_hz} step={1} min={10} max={200} onChange={a("gear_shift_freq_hz")}
@@ -324,7 +328,7 @@ export function App() {
             <NumberField label="Duration" unit="ms" value={A.gear_shift_duration_ms} step={5} min={10} max={500} onChange={a("gear_shift_duration_ms")}
               hint="How long the thump lasts. Squared-decay envelope inside that window." />
             <BoolField label="Use car drivetrain" value={A.drivetrain_routing_enabled} onChange={a("drivetrain_routing_enabled")}
-              hint="Look the car up by its telemetry car code and place the gear-shift and engine effects by where the engine sits and which axle is driven. The bias sliders then control strength only. Unrecognised cars fall back to the sliders exactly as set." />
+              hint="Look the car up by its telemetry car code and place the GEAR SHIFT by which axle is driven — its bias slider then sets strength only, not side. Engine placement is never routed and always follows its own slider. Unrecognised cars fall back to the sliders exactly as set." />
             <SubFieldset legend="RPM-based gain modulation">
               <NumberField label="RPM ramp start" unit="%" value={A.gear_shift_rpm_pct_low} step={1} min={0} max={100} onChange={a("gear_shift_rpm_pct_low")}
                 hint="Below this RPM%, gear-shift gain is at the low-RPM value." />

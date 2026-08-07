@@ -2,3 +2,12 @@ simrig_service_name: shaker
 # Web bind on the Pi defaults to 0.0.0.0 so the UI is reachable from the LAN.
 simrig_default_web_host: "0.0.0.0"
 simrig_default_web_port: 80
+
+# Output mixer levels applied at boot, before the shaker service starts.
+# USB adapters commonly enumerate attenuated — the C-Media dongle on this rig
+# comes up at -20 dB, quieter than the Pi's own jack. Cards are matched by name
+# because the index moves when other devices are plugged in.
+simrig_alsa_levels:
+  - card_match: "USB Advanced Audio Device"
+    control: "Speaker"
+    value: "100%"

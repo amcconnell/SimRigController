@@ -16,7 +16,7 @@ import numpy as np
 import pytest
 
 from shaker.audio.bus import AudioBus, TelemetryFeatures
-from shaker.audio.stream import AudioOutput, _pan
+from shaker.audio.stream import AudioOutput
 from shaker.config import AudioConfig
 from shaker.gt7.protocol import TelemetryPacket, parse_packet
 
@@ -167,37 +167,50 @@ def _render_engine(cfg: AudioConfig, car_code: int | None) -> np.ndarray:
     return np.concatenate(rendered)
 
 
-def test_mid_engine_car_thrums_the_seat() -> None:
-    x = _render_engine(_engine_only(), MID_CAR)
-    # Checked against the pan law rather than a guessed ratio: the default
-    # magnitude of 0.3 means 0.65 rear against 0.35 front, so the split is
-    # 1.86:1 by construction and a round threshold would be arbitrary.
-    front_w, rear_w = _pan(AudioConfig().engine_rumble_bias)
-    assert _rms(x[:, REAR]) / _rms(x[:, FRONT]) == pytest.approx(rear_w / front_w, rel=0.02)
+def test_engine_placement_ignores_the_car() -> None:
+    """Engine is deliberately not routed from the database, though it knows
+    where the engine sits.
+
+    Measured on a front-engine car with a seat shaker: routing by engine
+    position sends the most continuous effect in the mix to the pedals, and it
+    belongs in the seat. Engine thrum reaches a driver through the floor and
+    seat back whatever end the engine is at — transmission path beats source
+    location.
+    """
+    fr = _render_engine(_engine_only(), FR_CAR)     # front engine
+    mr = _render_engine(_engine_only(), MID_CAR)    # mid engine
+    assert np.array_equal(fr, mr), "engine placement changed with the car"
 
 
-def test_front_engine_car_thrums_the_pedals() -> None:
-    x = _render_engine(_engine_only(), FR_CAR)
-    front_w, rear_w = _pan(AudioConfig().engine_rumble_bias)
-    assert _rms(x[:, FRONT]) / _rms(x[:, REAR]) == pytest.approx(rear_w / front_w, rel=0.02)
+def test_engine_slider_is_not_inverted() -> None:
+    """The regression test for a real defect: routing took abs() of the bias,
+    so dragging the control toward Rear moved the effect further Front. A
+    control labelled Front-to-Rear must not do the opposite of what it says.
+    """
+    prev = None
+    for bias in (-0.6, -0.2, 0.2, 0.6):
+        x = _render_engine(_engine_only(engine_rumble_bias=bias), FR_CAR)
+        share = _rms(x[:, REAR]) / (_rms(x[:, FRONT]) + _rms(x[:, REAR]))
+        if prev is not None:
+            assert share > prev, f"rear share fell as bias moved rearward at {bias}"
+        prev = share
 
 
-def test_engine_placement_is_mirrored_between_layouts() -> None:
-    """A mid-engine car and a front-engine one must be exact mirrors of each
-    other — same magnitude, opposite ends."""
-    mid = _render_engine(_engine_only(), MID_CAR)
-    front = _render_engine(_engine_only(), FR_CAR)
-    assert _rms(mid[:, REAR]) == pytest.approx(_rms(front[:, FRONT]), rel=1e-3)
-    assert _rms(mid[:, FRONT]) == pytest.approx(_rms(front[:, REAR]), rel=1e-3)
+def test_engine_respects_the_configured_side_on_every_layout() -> None:
+    """A rear bias must put it rearward whatever the car is — including the
+    front-engine case, which is precisely where routing used to override it."""
+    for car in (FR_CAR, FWD_CAR, MID_CAR, AWD_CAR, UNKNOWN_CAR):
+        x = _render_engine(_engine_only(engine_rumble_bias=0.6), car)
+        assert _rms(x[:, REAR]) > _rms(x[:, FRONT]) * 2, f"car {car} pulled it forward"
 
 
-def test_four_wheel_drive_engine_position_is_left_alone() -> None:
-    """The source records drive type, not engine position, and 4WD spans both
-    extremes — so the configured value must survive untouched rather than be
-    guessed at."""
-    routed = _render_engine(_engine_only(), AWD_CAR)
-    raw = _render_engine(_engine_only(drivetrain_routing_enabled=False), AWD_CAR)
-    assert np.array_equal(routed, raw)
+def test_gear_shift_is_still_routed() -> None:
+    """Removing engine from routing must not disturb the gear shift, where
+    driveline shock genuinely does react through the driven axle."""
+    assert _rms(_render_shift(_shift_only(), FWD_CAR)[:, FRONT]) > \
+           _rms(_render_shift(_shift_only(), FWD_CAR)[:, REAR]) * 2
+    assert _rms(_render_shift(_shift_only(), FR_CAR)[:, REAR]) > \
+           _rms(_render_shift(_shift_only(), FR_CAR)[:, FRONT]) * 2
 
 
 # --- The car code itself -----------------------------------------------------

@@ -1,0 +1,15 @@
+[Unit]
+Description=Set audio output mixer levels for the sim rig
+# Must land before the shaker opens the device, or the first session of every
+# boot runs at whatever level the adapter happened to enumerate with.
+After=sound.target
+Before={{ simrig_service_name }}.service
+Wants=sound.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+ExecStart={{ simrig_app_root }}/bin/alsa-levels.sh
+
+[Install]
+WantedBy=multi-user.target

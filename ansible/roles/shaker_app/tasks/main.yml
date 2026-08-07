@@ -92,6 +92,42 @@
   notify: Restart shaker service
   when: not ansible_check_mode
 
+- name: Ensure bin dir exists
+  ansible.builtin.file:
+    path: "{{ simrig_app_root }}/bin"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ simrig_app_group }}"
+    mode: "0755"
+
+- name: Install ALSA level script
+  ansible.builtin.template:
+    src: alsa-levels.sh.j2
+    dest: "{{ simrig_app_root }}/bin/alsa-levels.sh"
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Reapply ALSA levels
+
+- name: Install ALSA level unit
+  ansible.builtin.template:
+    src: simrig-alsa.service.j2
+    dest: /etc/systemd/system/simrig-alsa.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd daemon
+    - Reapply ALSA levels
+
+- name: Enable ALSA level unit
+  ansible.builtin.systemd:
+    name: simrig-alsa.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: not ansible_check_mode
+
 - name: Install systemd unit
   ansible.builtin.template:
     src: shaker.service.j2

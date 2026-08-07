@@ -109,7 +109,6 @@ class AudioOutput:
         # resolving it once per car keeps a dict lookup off the audio path.
         self._routed_car: int | None = -1  # -1 = nothing resolved yet
         self._driven_axle: str | None = None
-        self._engine_position: str | None = None
         self._stop = asyncio.Event()
         self._stream = None  # type: ignore[assignment]
 
@@ -350,18 +349,40 @@ class AudioOutput:
         self._write_channels(outdata, frames, (front, rear))
 
     def _placement(self, cfg) -> tuple[float, float]:  # type: ignore[no-untyped-def]
-        """(gear_shift_bias, engine_rumble_bias), steered by the car if known.
+        """(gear_shift_bias, engine_rumble_bias), gear steered by the car if known.
 
-        The configured value supplies the *magnitude* and the car database the
-        *direction*: a shift thump keeps the strength the user dialled in, but
-        lands on whichever axle is actually driven. That way the knob still
-        does what the label says on an unrecognised car, and a front-wheel-
-        drive car stops thumping the seat through an axle it does not drive.
+        Only the gear shift is routed from the car database, and only its
+        *direction*: the configured value supplies the magnitude, so the knob
+        still sets how strongly while the driven axle decides which end. That
+        is defensible because driveline shock genuinely does react through the
+        driven axle.
+
+        Engine placement is deliberately NOT routed, though the database knows
+        where the engine sits. Measured on a front-engine car with a seat
+        shaker: routing by engine position sends the most continuous effect in
+        the mix to the pedals, and it belongs in the seat. Engine thrum reaches
+        a driver through the floor and the seat back whatever end the engine is
+        at — the transmission path beats the source location. Routing it also
+        inverted the slider, since taking abs() of the bias meant dragging the
+        control toward Rear moved the effect further Front.
         """
         gear = cfg.gear_shift_bias
         engine = cfg.engine_rumble_bias
         if not cfg.drivetrain_routing_enabled:
             return (gear, engine)
+
+        car = self._bus.car_code
+        if car != self._routed_car:
+            self._routed_car = car
+            self._driven_axle = drivetrain.driven_axle(car)
+
+        if self._driven_axle == "front":
+            gear = -abs(gear)
+        elif self._driven_axle == "rear":
+            gear = abs(gear)
+        elif self._driven_axle == "both":
+            gear = 0.0  # four-wheel drive shocks both ends
+        return (gear, engine)
 
         car = self._bus.car_code
         if car != self._routed_car:
