@@ -20,6 +20,7 @@ from shaker.gt7.client import GT7Client
 from shaker.gt7.protocol import TelemetryPacket
 from shaker.profiles import DEFAULT_PROFILE_NAME
 from shaker.recording import SessionRecorder, list_sessions
+from shaker.sensors.pods import SensorHub
 
 log = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ def create_app(
     gt7: GT7Client,
     bus: AudioBus,
     recorder: SessionRecorder | None = None,
+    sensors: SensorHub | None = None,
 ) -> FastAPI:
     app = FastAPI(title="SimRig Shaker")
 
@@ -152,6 +154,7 @@ def create_app(
             "axle": _axle_diagnostics(bus.features, gt7.latest_packet),
             "limiter": _limiter_diagnostics(bus),
             "recording": recorder.status() if recorder else None,
+            "sensors": sensors.status() if sensors else None,
         }
 
     @app.get("/api/recordings")

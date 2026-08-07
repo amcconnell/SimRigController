@@ -17,7 +17,42 @@
       - tar
       - alsa-utils
       - libportaudio2
+      # i2cdetect, for confirming a pod answers before blaming the software.
+      - i2c-tools
     state: present
+
+# --- I2C for the accelerometer pods ----------------------------------------
+# Off by default on Raspberry Pi OS, and the failure is quiet: /dev/i2c-1 simply
+# does not exist, which the app reports as "bus unavailable" rather than
+# crashing. Enabling it here means a pod works the first time it is plugged in
+# instead of after a debugging session.
+
+- name: Enable the I2C controller in boot config
+  ansible.builtin.lineinfile:
+    # Bookworm moved this from /boot; the old path is a symlink on current
+    # images but not on every one, so target the real location.
+    path: /boot/firmware/config.txt
+    regexp: '^#?\s*dtparam=i2c_arm='
+    line: "dtparam=i2c_arm=on"
+    state: present
+  register: i2c_boot_config
+  notify: Reboot for I2C
+
+- name: Load the i2c-dev module at boot
+  ansible.builtin.lineinfile:
+    path: /etc/modules-load.d/simrig-i2c.conf
+    line: "i2c-dev"
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reboot for I2C
+
+- name: Load i2c-dev now, so a reboot is only needed for the boot-config change
+  community.general.modprobe:
+    name: i2c-dev
+    state: present
+  failed_when: false
 
 - name: Ensure parent app directory exists
   ansible.builtin.file:

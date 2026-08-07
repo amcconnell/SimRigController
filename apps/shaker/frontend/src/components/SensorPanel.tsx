@@ -1,0 +1,137 @@
+import type { PodStatus, SensorStatus } from "../types/config";
+
+function g(v: number, digits = 3): string {
+  return (v < 0 ? "−" : "+") + Math.abs(v).toFixed(digits);
+}
+
+/** Bar for a vibration magnitude. 1 g is far more than a shaker rig produces
+ *  at a mounting point, so the scale is set to something the eye can use. */
+const FULL_SCALE_G = 0.5;
+
+interface SensorPanelProps {
+  sensors: SensorStatus | null | undefined;
+}
+
+/** Accelerometer pods — what the rig delivers, rather than what it was sent.
+ *
+ * Written for installation as much as for measurement. While you are under the
+ * seat with a pod in one hand, the questions are: is it detected, is it the
+ * right way up, and does it see me tapping the frame. All three are answered
+ * here without needing a terminal, and pods are re-probed on a timer so one
+ * plugged in with the app running simply appears.
+ */
+export function SensorPanel({ sensors }: SensorPanelProps) {
+  const s = sensors ?? null;
+
+  if (!s || !s.enabled) {
+    return (
+      <div className="mb-4 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+        <div className="text-sm font-semibold uppercase tracking-wider text-zinc-200">
+          Accelerometer pods
+        </div>
+        <p className="mt-2 text-xs text-zinc-500">
+          Disabled. Turn on <span className="font-mono">sensors.enabled</span> once the pods are
+          wired — restart-required, so the app bounces itself.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-4 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="text-sm font-semibold uppercase tracking-wider text-zinc-200">
+          Accelerometer pods
+        </span>
+        <span className="font-mono text-xs text-zinc-500">{s.bus}</span>
+      </div>
+
+      {!s.available && (
+        <div className="mb-3 rounded border border-amber-900/50 bg-amber-950/20 p-3">
+          <div className="text-xs font-semibold text-amber-200">Bus unavailable</div>
+          <p className="mt-1 font-mono text-xs leading-relaxed text-zinc-400">{s.error}</p>
+        </div>
+      )}
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {s.pods.map((p) => (
+          <PodCard key={p.name} pod={p} />
+        ))}
+      </div>
+
+      <p className="mt-3 text-xs leading-relaxed text-zinc-500">
+        <span className="text-zinc-300">Tilt</span> is the gravity vector and should read 1.000 g
+        on a rig at rest — a figure well off that means the pod is loose or still moving.{" "}
+        <span className="text-zinc-300">Orientation</span> is derived from it, so it tells you
+        which way a pod ended up without having to read a silkscreen under a seat. Vibration has
+        gravity removed, so tapping the frame should move it and standing still should not.
+      </p>
+    </div>
+  );
+}
+
+function PodCard({ pod }: { pod: PodStatus }) {
+  const rmsPct = Math.min(1, pod.vibration_rms_g / FULL_SCALE_G) * 100;
+  const peakPct = Math.min(1, pod.vibration_peak_g / FULL_SCALE_G) * 100;
+  const tiltOk = pod.present && Math.abs(pod.tilt_g - 1.0) < 0.1;
+
+  return (
+    <div className="rounded border border-zinc-800/80 px-3 py-2">
+      <div className="flex items-baseline justify-between">
+        <span className="text-xs uppercase tracking-wider text-zinc-300">{pod.name}</span>
+        <span className="font-mono text-[10px] text-zinc-600">{pod.address}</span>
+      </div>
+
+      {!pod.present ? (
+        <>
+          <div className="mt-1 text-sm text-zinc-500">Not detected</div>
+          <p className="mt-1 text-xs leading-relaxed text-zinc-600">
+            {pod.error ?? "Re-probed every couple of seconds — plug it in and it will appear."}
+          </p>
+        </>
+      ) : (
+        <>
+          <div className="mt-1 grid grid-cols-3 gap-1 font-mono text-sm tabular-nums text-zinc-300">
+            <span>x {g(pod.x, 2)}</span>
+            <span>y {g(pod.y, 2)}</span>
+            <span>z {g(pod.z, 2)}</span>
+          </div>
+
+          <div className="mt-2 flex items-center justify-between text-xs">
+            <span className="text-zinc-500">
+              tilt{" "}
+              <span className={`font-mono tabular-nums ${tiltOk ? "text-zinc-300" : "text-amber-300"}`}>
+                {pod.tilt_g.toFixed(3)} g
+              </span>
+            </span>
+            <span className="text-zinc-500">
+              facing <span className="font-mono text-zinc-300">{pod.orientation}</span>
+            </span>
+          </div>
+
+          <div className="mt-2">
+            <div className="flex justify-between text-[10px] uppercase tracking-wider text-zinc-600">
+              <span>vibration</span>
+              <span className="font-mono tabular-nums text-zinc-400">
+                {pod.vibration_rms_g.toFixed(3)} g rms · {pod.vibration_peak_g.toFixed(2)} pk
+              </span>
+            </div>
+            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-zinc-800">
+              <div
+                className="h-full rounded-full bg-zinc-500 transition-[width] duration-150"
+                style={{ width: `${Math.max(rmsPct, peakPct * 0.15)}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="mt-2 flex justify-between text-[10px] text-zinc-600">
+            <span className="font-mono tabular-nums">{pod.rate_hz.toFixed(0)} Hz actual</span>
+            <span className="font-mono tabular-nums">
+              {pod.samples.toLocaleString()} samples
+            </span>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
