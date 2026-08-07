@@ -38,6 +38,20 @@
   register: i2c_boot_config
   notify: Reboot for I2C
 
+- name: Run the I2C bus at 400 kHz
+  # The Pi defaults to 100 kHz, where the bus cannot keep up. A 6-byte block
+  # read is ~0.81 ms at 100 kHz, so draining two 32-deep FIFOs costs ~52 ms
+  # against a 20 ms poll — samples are lost with no error anywhere, which is
+  # the failure mode most likely to be blamed on the mounting. At 400 kHz the
+  # same work is ~13 ms and fits. 400 kHz is also what the ADXL345 datasheet
+  # assumes when it caps I2C output at 800 Hz.
+  ansible.builtin.lineinfile:
+    path: /boot/firmware/config.txt
+    regexp: '^#?\s*dtparam=i2c_arm_baudrate='
+    line: "dtparam=i2c_arm_baudrate=400000"
+    state: present
+  notify: Reboot for I2C
+
 - name: Load the i2c-dev module at boot
   ansible.builtin.lineinfile:
     path: /etc/modules-load.d/simrig-i2c.conf
