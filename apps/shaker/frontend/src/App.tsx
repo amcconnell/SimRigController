@@ -18,6 +18,7 @@ import { ProfileSelector } from "./components/ProfileSelector";
 import { MuteButton } from "./components/MuteButton";
 import { AxlePanel } from "./components/AxlePanel";
 import { MotionPanel } from "./components/MotionPanel";
+import { LimiterPanel } from "./components/LimiterPanel";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 type View = "tuning" | "diagnostics";
@@ -147,9 +148,11 @@ export function App() {
         {view === "diagnostics" && (
           <>
             <p className="mb-4 text-xs text-zinc-500">
-              Read-only. These exist to settle protocol assumptions from the driver's seat —
-              nothing here changes what the rig does.
+              Read-only. These measure what the rig is actually doing — whether the output is
+              being compressed, and whether the protocol assumptions still hold from the
+              driver's seat. Nothing here changes what the rig does.
             </p>
+            <LimiterPanel limiter={status?.limiter} />
             <MotionPanel motion={status?.motion} />
             <AxlePanel axle={status?.axle} />
           </>

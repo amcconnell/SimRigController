@@ -153,6 +153,18 @@ export interface MotionStatus {
   lat_accel: number;
 }
 
+// Mirrors _limiter_diagnostics() in web/app.py. Gain reduction is reported as
+// a positive number of dB, so 0 means the limiter is doing nothing.
+export interface LimiterStatus {
+  // Last audio block.
+  reduction_db: number;
+  // Deepest recent reduction, latched and slowly decayed so a transient
+  // between two polls is still visible.
+  peak_reduction_db: number;
+  // Share of recent time spent reducing at all, 0..100.
+  duty_pct: number;
+}
+
 export interface Status {
   gt7: GT7Status;
   car: CarIdentity;
@@ -160,6 +172,7 @@ export interface Status {
   telemetry: TelemetrySummary | null;
   muted: boolean;
   axle: AxleStatus;
+  limiter: LimiterStatus;
 }
 
 export interface ProfilesState {
