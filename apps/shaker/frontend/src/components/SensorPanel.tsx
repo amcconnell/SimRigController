@@ -1,4 +1,7 @@
-import type { PodStatus, SensorStatus } from "../types/config";
+import { useCallback, useState } from "react";
+
+import { measureCrosstalk } from "../api/client";
+import type { CrosstalkResult, PodStatus, SensorStatus } from "../types/config";
 
 function g(v: number, digits = 3): string {
   return (v < 0 ? "−" : "+") + Math.abs(v).toFixed(digits);
@@ -66,6 +69,97 @@ export function SensorPanel({ sensors }: SensorPanelProps) {
         which way a pod ended up without having to read a silkscreen under a seat. Vibration has
         gravity removed, so tapping the frame should move it and standing still should not.
       </p>
+
+      <Crosstalk enabled={s.any_present} />
+    </div>
+  );
+}
+
+const BANDS: Record<string, { label: string; tone: string }> = {
+  good: { label: "Well separated", tone: "text-emerald-300" },
+  usable: { label: "Some bleed", tone: "text-amber-300" },
+  poor: { label: "Effectively mono", tone: "text-rose-300" },
+};
+
+/** Front/rear isolation, measured rather than argued about.
+ *
+ * Below about 100 Hz the body cannot localise a source — it reports which part
+ * of itself is loaded, feet or back. So energy from the pedal-deck shaker that
+ * reaches the seat is felt as rear, which is exactly the cue the two-channel
+ * split exists to carry. Some coupling is realistic; the ratio decides.
+ */
+function Crosstalk({ enabled }: { enabled: boolean }) {
+  const [result, setResult] = useState<CrosstalkResult | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      setResult(await measureCrosstalk());
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  const band = result?.ok ? BANDS[result.verdict] : undefined;
+
+  return (
+    <div className="mt-3 border-t border-zinc-800/80 pt-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={run}
+          disabled={busy || !enabled}
+          className="rounded-md bg-zinc-800 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-200 transition hover:bg-zinc-700 disabled:opacity-50"
+        >
+          {busy ? "Measuring…" : "Measure crosstalk"}
+        </button>
+        <span className="text-xs text-zinc-500">
+          {busy
+            ? "pulsing each shaker alone — about five seconds"
+            : "how much of each shaker reaches the other pod"}
+        </span>
+      </div>
+
+      {error && <p className="mt-2 text-xs text-rose-300">{error}</p>}
+
+      {result && !result.ok && (
+        <p className="mt-3 text-xs leading-relaxed text-amber-300">{result.reason}</p>
+      )}
+
+      {result?.ok && (
+        <>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <Ratio label="front reaching rear" db={result.front_to_rear_db} />
+            <Ratio label="rear reaching front" db={result.rear_to_front_db} />
+          </div>
+          <div className={`mt-3 text-sm font-semibold ${band?.tone ?? "text-zinc-300"}`}>
+            {band?.label}
+          </div>
+          <p className="mt-1 text-xs leading-relaxed text-zinc-500">{result.detail}</p>
+          {result.warnings.map((w) => (
+            <p key={w} className="mt-1 text-xs leading-relaxed text-zinc-600">
+              {w}
+            </p>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+function Ratio({ label, db }: { label: string; db: number }) {
+  return (
+    <div className="rounded border border-zinc-800/80 px-3 py-2">
+      <div className="text-xs uppercase tracking-wider text-zinc-500">{label}</div>
+      <div className="font-mono text-2xl tabular-nums text-zinc-200">
+        {db.toFixed(1)}
+        <span className="ml-1 text-sm text-zinc-500">dB</span>
+      </div>
     </div>
   );
 }

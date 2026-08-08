@@ -20,6 +20,7 @@ from shaker.gt7.client import GT7Client
 from shaker.gt7.protocol import TelemetryPacket
 from shaker.profiles import DEFAULT_PROFILE_NAME
 from shaker.recording import SessionRecorder, list_sessions
+from shaker.sensors import crosstalk as crosstalk_mod
 from shaker.sensors.pods import SensorHub
 
 log = logging.getLogger(__name__)
@@ -156,6 +157,19 @@ def create_app(
             "recording": recorder.status() if recorder else None,
             "sensors": sensors.status() if sensors else None,
         }
+
+    @app.post("/api/sensors/crosstalk")
+    async def measure_crosstalk() -> dict[str, Any]:
+        """Pulse each shaker alone and report how much reaches the other pod.
+
+        Async and slow on purpose — the sequence is a few seconds of real
+        stimulus. Running it on the event loop rather than a worker keeps the
+        pod windows and the audio trigger on one clock.
+        """
+        if sensors is None:
+            raise HTTPException(status_code=503, detail="sensors unavailable")
+        result = await crosstalk_mod.measure(bus, sensors)
+        return result.as_dict()
 
     @app.get("/api/recordings")
     def read_recordings() -> dict[str, Any]:

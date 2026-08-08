@@ -124,6 +124,11 @@ class Pod:
         self._peak = 0.0
         self._count_since = 0
         self._count_at = 0.0
+        # Integration window for a one-off measurement — see begin_window.
+        self._win_sumsq = 0.0
+        self._win_n = 0
+        self._win_open = False
+        self._primed = False
         self.stats = PodStats()
 
     def attach(self, bus: I2CBus | None) -> None:
@@ -154,6 +159,7 @@ class Pod:
     def _reset(self, present: bool, error: str | None) -> None:
         if not present:
             self._dev = None
+        self._primed = False
         self._ms = 0.0
         self._peak = 0.0
         self._count_since = 0
@@ -183,7 +189,21 @@ class Pod:
         ra = _alpha(sdt, _RMS_TAU_S)
 
         gx, gy, gz = s.gx, s.gy, s.gz
+        if not self._primed:
+            # Seed the gravity tracker from the first reading instead of
+            # letting it converge from zero. Starting at zero means the whole
+            # 1 g of gravity is reported as vibration until the filter catches
+            # up — about seven seconds at this time constant — so a pod plugged
+            # in during installation would appear, show an enormous shake, and
+            # slowly subside. The first sample is a far better estimate of
+            # gravity than zero is, even if the rig is moving at that instant.
+            first = samples[0]
+            gx, gy, gz = first.x, first.y, first.z
+            self._primed = True
         ms, peak = self._ms, self._peak
+        # This batch only. Folded into the window below if one is open, so
+        # the loop stays branch-free and nothing accumulates when it is not.
+        batch_sumsq = 0.0
         for sample in samples:
             gx += ga * (sample.x - gx)
             gy += ga * (sample.y - gy)
@@ -194,11 +214,15 @@ class Pod:
             mag = math.sqrt(mag2)
             if mag > peak:
                 peak = mag
+            batch_sumsq += mag2
 
         last = samples[-1]
         s.x, s.y, s.z = last.x, last.y, last.z
         s.gx, s.gy, s.gz = gx, gy, gz
         self._ms = ms
+        if self._win_open:
+            self._win_sumsq += batch_sumsq
+            self._win_n += len(samples)
         rms = math.sqrt(max(ms, 0.0))
         s.vibration_rms_g = rms if rms > _QUIET_G else 0.0
         s.samples += len(samples)
@@ -221,6 +245,35 @@ class Pod:
         pa = _alpha(dt_s, _PEAK_TAU_S)
         self._peak *= 1.0 - pa
         self.stats.vibration_peak_g = self._peak if self._peak > _QUIET_G else 0.0
+
+    def begin_window(self) -> None:
+        """Start integrating AC energy for a measurement.
+
+        Deliberately lockless, like the rest of this module. A batch that
+        straddles the boundary is counted on the wrong side, which at 20 ms
+        batches against a window of about a second is under 0.2 dB — far below
+        anything that would change a conclusion, and much cheaper than putting
+        a lock on the sampling path.
+        """
+        self._win_sumsq = 0.0
+        self._win_n = 0
+        self._win_open = True
+
+    def end_window(self) -> tuple[float, int]:
+        """Close the window and return (rms of the AC magnitude, sample count).
+
+        Closing matters: an accumulator left running would grow for as long as
+        the process lives, and the boundary error argued for above only exists
+        if there is a boundary.
+        """
+        self._win_open = False
+        n, sumsq = self._win_n, self._win_sumsq
+        # Consume it. A second read returning the previous window's data would
+        # hand a caller a stale measurement that looks like a fresh one.
+        self._win_n, self._win_sumsq = 0, 0.0
+        if n <= 0:
+            return (0.0, 0)
+        return (math.sqrt(sumsq / n), n)
 
     def status(self) -> dict[str, Any]:
         s = self.stats

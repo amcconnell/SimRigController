@@ -358,3 +358,44 @@ def test_hub_stop_is_idempotent() -> None:
     hub.start()
     hub.stop()
     hub.stop()
+
+
+def test_a_freshly_attached_pod_does_not_report_a_phantom_shake() -> None:
+    """Gravity is seeded from the first reading, not converged to from zero.
+
+    Converging from zero means the whole 1 g is reported as vibration until the
+    filter catches up — about seven seconds at this time constant. During
+    installation that shows as a pod appearing, claiming an enormous shake, and
+    slowly subsiding, which is indistinguishable from a genuinely loose mount.
+    """
+    bus = FakeBus()
+    pod = Pod("front", ADDR_PRIMARY, 800.0, 16)
+    pod.attach(bus)
+
+    bus.push(ADDR_PRIMARY, 0.0, 0.0, 1.0, n=32)
+    pod.poll(0.02)
+
+    assert pod.stats.tilt_g == pytest.approx(1.0, abs=0.01)
+    assert pod.stats.vibration_rms_g == 0.0, "a still pod is still from the first poll"
+
+
+def test_window_integrates_only_while_open() -> None:
+    bus = FakeBus()
+    pod = Pod("front", ADDR_PRIMARY, 800.0, 16)
+    pod.attach(bus)
+    bus.push(ADDR_PRIMARY, 0.0, 0.0, 1.0, n=32)
+    pod.poll(0.02)
+
+    pod.begin_window()
+    for _ in range(10):
+        bus.push(ADDR_PRIMARY, 0.0, 0.0, 1.2, n=32)
+        pod.poll(0.02)
+    rms, n = pod.end_window()
+    assert n == 320
+    assert rms > 0.05
+
+    # Closed: further motion must not accumulate into a stale window.
+    for _ in range(10):
+        bus.push(ADDR_PRIMARY, 0.0, 0.0, 1.5, n=32)
+        pod.poll(0.02)
+    assert pod.end_window() == (0.0, 0)

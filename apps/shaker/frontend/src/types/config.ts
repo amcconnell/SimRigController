@@ -202,6 +202,21 @@ export interface PodStatus {
   rate_hz: number;
 }
 
+// Mirrors CrosstalkResult.as_dict() in sensors/crosstalk.py. Ratios are dB,
+// so 0 means the far pod matched the near one — mono in practice.
+export interface CrosstalkResult {
+  ok: boolean;
+  reason: string | null;
+  baseline: { front_g: number; rear_g: number };
+  front_drive: { front_g: number; rear_g: number };
+  rear_drive: { front_g: number; rear_g: number };
+  front_to_rear_db: number;
+  rear_to_front_db: number;
+  verdict: "good" | "usable" | "poor" | "";
+  detail: string;
+  warnings: string[];
+}
+
 export interface SensorStatus {
   enabled: boolean;
   bus: string;
