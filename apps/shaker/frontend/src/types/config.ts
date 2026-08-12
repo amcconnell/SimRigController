@@ -235,6 +235,13 @@ export interface CrosstalkResult {
   rear_drive: { front_g: number; rear_g: number };
   front_to_rear_db: number;
   rear_to_front_db: number;
+  // Mean of the two directions. Per-pod sensitivity error enters the two
+  // directions as reciprocals, so it cancels here — this figure is right even
+  // with uncalibrated or mismatched pods, and is the one to act on.
+  isolation_db: number;
+  // Where that mismatch survives. Partly real: a seat couples into a body far
+  // better than a pedal deck does.
+  asymmetry_db: number;
   verdict: "good" | "usable" | "poor" | "";
   detail: string;
   warnings: string[];

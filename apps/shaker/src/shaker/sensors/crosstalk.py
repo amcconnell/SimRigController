@@ -95,6 +95,17 @@ class CrosstalkResult:
     rear_drive_front_g: float = 0.0
     front_to_rear_db: float = 0.0
     rear_to_front_db: float = 0.0
+    # Mean of the two directions, and the figure to act on. Each pod reads with
+    # its own sensitivity factor, so front->rear carries (k_rear / k_front) and
+    # rear->front carries its reciprocal. Multiplying the two cancels both —
+    # equivalently, the mean in dB — which makes this immune to the pods being
+    # mismatched, uncalibrated, or calibrated in the wrong posture.
+    isolation_db: float = 0.0
+    # The difference between directions is where that mismatch survives, so it
+    # is reported separately rather than folded into the verdict. Real
+    # asymmetry exists too: a seat couples into a body far better than a pedal
+    # deck does.
+    asymmetry_db: float = 0.0
     verdict: str = ""
     detail: str = ""
     warnings: list[str] = field(default_factory=list)
@@ -117,6 +128,8 @@ class CrosstalkResult:
             },
             "front_to_rear_db": round(self.front_to_rear_db, 1),
             "rear_to_front_db": round(self.rear_to_front_db, 1),
+            "isolation_db": round(self.isolation_db, 1),
+            "asymmetry_db": round(self.asymmetry_db, 1),
             "verdict": self.verdict,
             "detail": self.detail,
             "warnings": self.warnings,
@@ -196,17 +209,24 @@ async def measure(
     result.front_to_rear_db = ratio_db(result.front_drive_rear_g, result.front_drive_front_g)
     result.rear_to_front_db = ratio_db(result.rear_drive_front_g, result.rear_drive_rear_g)
 
-    worst = max(result.front_to_rear_db, result.rear_to_front_db)
-    result.verdict, result.detail = classify(worst)
+    # Judged on the mean rather than the worse direction. The worse direction
+    # is the one carrying the pods' sensitivity mismatch, so basing a verdict on
+    # it would mean acting on the corrupted quantity — and the question being
+    # asked is how isolated the rig is, not which pod reads high.
+    result.isolation_db = 0.5 * (result.front_to_rear_db + result.rear_to_front_db)
+    result.asymmetry_db = result.front_to_rear_db - result.rear_to_front_db
+    result.verdict, result.detail = classify(result.isolation_db)
     result.ok = True
 
-    if abs(result.front_to_rear_db - result.rear_to_front_db) > 6.0:
+    if abs(result.asymmetry_db) > 6.0:
         result.warnings.append(
-            "the two directions differ markedly, which is normal — a seat couples into a "
-            "body far better than a pedal deck does"
+            "the two directions differ markedly. Some of that is real — a seat couples into a "
+            "body far better than a pedal deck does — and some is the pods being mismatched, "
+            "which is exactly the part the mean above is immune to"
         )
     log.info(
-        "crosstalk: front->rear %.1f dB, rear->front %.1f dB (%s)",
-        result.front_to_rear_db, result.rear_to_front_db, result.verdict,
+        "crosstalk: isolation %.1f dB (front->rear %.1f, rear->front %.1f) %s",
+        result.isolation_db, result.front_to_rear_db,
+        result.rear_to_front_db, result.verdict,
     )
     return result

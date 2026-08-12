@@ -203,7 +203,8 @@ function Crosstalk({ enabled }: { enabled: boolean }) {
 
       {result?.ok && (
         <>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <Ratio label="isolation" db={result.isolation_db} primary />
             <Ratio label="front reaching rear" db={result.front_to_rear_db} />
             <Ratio label="rear reaching front" db={result.rear_to_front_db} />
           </div>
@@ -211,6 +212,18 @@ function Crosstalk({ enabled }: { enabled: boolean }) {
             {band?.label}
           </div>
           <p className="mt-1 text-xs leading-relaxed text-zinc-500">{result.detail}</p>
+          <p className="mt-2 text-xs leading-relaxed text-zinc-500">
+            <span className="text-zinc-300">Isolation</span> is the mean of the two directions
+            and the figure to act on. Each pod reads with its own sensitivity, which enters the
+            two directions as reciprocals and cancels in the mean — so this number is right even
+            with the pods uncalibrated or badly matched. The{" "}
+            <span className="text-zinc-300">
+              {result.asymmetry_db >= 0 ? "+" : ""}
+              {result.asymmetry_db.toFixed(1)} dB
+            </span>{" "}
+            between directions is where mismatch survives, alongside the genuine difference
+            between a seat and a pedal deck.
+          </p>
           {result.warnings.map((w) => (
             <p key={w} className="mt-1 text-xs leading-relaxed text-zinc-600">
               {w}
@@ -222,9 +235,17 @@ function Crosstalk({ enabled }: { enabled: boolean }) {
   );
 }
 
-function Ratio({ label, db }: { label: string; db: number }) {
+function Ratio({ label, db, primary = false }: {
+  label: string;
+  db: number;
+  primary?: boolean;
+}) {
   return (
-    <div className="rounded border border-zinc-800/80 px-3 py-2">
+    <div
+      className={`rounded border px-3 py-2 ${
+        primary ? "border-zinc-600 bg-zinc-800/40" : "border-zinc-800/80"
+      }`}
+    >
       <div className="text-xs uppercase tracking-wider text-zinc-500">{label}</div>
       <div className="font-mono text-2xl tabular-nums text-zinc-200">
         {db.toFixed(1)}
