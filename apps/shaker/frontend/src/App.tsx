@@ -280,6 +280,28 @@ export function App() {
               <NumberField label="Blend full" unit="m/s" value={A.vibration_speed_blend_high_mps} step={1} min={0} max={120} onChange={a("vibration_speed_blend_high_mps")}
                 hint="At or above this speed the high band (60–80 Hz) is fully mixed in. Linear blend between start and full." />
             </SubFieldset>
+            <SubFieldset legend={stereo ? "Front noise bands" : "Noise bands"}>
+              <NumberField label="Low band from" unit="Hz" value={A.vibration_low_band_lo_hz} step={1} min={15} max={200} onChange={a("vibration_low_band_lo_hz")}
+                hint="Lower edge of the band that plays at all speeds. Default 44 Hz." />
+              <NumberField label="Low band to" unit="Hz" value={A.vibration_low_band_hi_hz} step={1} min={15} max={200} onChange={a("vibration_low_band_hi_hz")}
+                hint="Upper edge of the always-on band. Default 50 Hz. Narrower than a couple of Hz rings rather than reading as noise." />
+              <NumberField label="High band from" unit="Hz" value={A.vibration_high_band_lo_hz} step={1} min={15} max={200} onChange={a("vibration_high_band_lo_hz")}
+                hint="Lower edge of the band faded in with speed. Default 60 Hz." />
+              <NumberField label="High band to" unit="Hz" value={A.vibration_high_band_hi_hz} step={1} min={15} max={200} onChange={a("vibration_high_band_hi_hz")}
+                hint="Upper edge of the speed band. Default 80 Hz." />
+            </SubFieldset>
+            {stereo && (
+              <SubFieldset legend="Rear noise bands">
+                <NumberField label="Low band from" unit="Hz" value={A.vibration_rear_low_band_lo_hz} step={1} min={15} max={200} onChange={a("vibration_rear_low_band_lo_hz")}
+                  hint="Giving the rear its own bands is a deliberate fiction — no road puts a particular frequency under one axle. It earns its place when the frame couples the two ends: measured isolation here is -4.2 dB, so position alone carries almost nothing, while below 100 Hz a body separates by character very well. Leave equal to the front for the original behaviour." />
+                <NumberField label="Low band to" unit="Hz" value={A.vibration_rear_low_band_hi_hz} step={1} min={15} max={200} onChange={a("vibration_rear_low_band_hi_hz")}
+                  hint="Upper edge of the rear always-on band." />
+                <NumberField label="High band from" unit="Hz" value={A.vibration_rear_high_band_lo_hz} step={1} min={15} max={200} onChange={a("vibration_rear_high_band_lo_hz")}
+                  hint="Lower edge of the rear speed band." />
+                <NumberField label="High band to" unit="Hz" value={A.vibration_rear_high_band_hi_hz} step={1} min={15} max={200} onChange={a("vibration_rear_high_band_hi_hz")}
+                  hint="Upper edge of the rear speed band. A reasonable starting split is the rear low and the front high — rumbly seat, buzzy feet — since that pairing is the one a body separates most easily." />
+              </SubFieldset>
+            )}
           </EffectCard>
 
           <EffectCard

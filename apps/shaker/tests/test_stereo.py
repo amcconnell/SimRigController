@@ -349,3 +349,103 @@ def test_stereo_voices_share_the_noise_buffers() -> None:
     assert out._vibration._noise_low is out._vibration_rear._noise_low
     assert out._vibration._noise_high is out._vibration_rear._noise_high
     assert out._vibration._cursor != out._vibration_rear._cursor
+
+
+# --- Per-channel noise bands -----------------------------------------------
+#
+# Giving each end its own band is a deliberate fiction: no road puts a
+# particular frequency under one axle. It is bought because a stiff frame
+# couples the two ends together whatever the mixer intends — measured -4.2 dB
+# of isolation on this rig — while below 100 Hz a body separates by character
+# far better than by position.
+
+
+def _centroid_hz(x: np.ndarray, sr: int = 48000) -> float:
+    """Power-weighted spectral centroid over the band a shaker works in.
+
+    Power-weighted and band-limited on purpose: a magnitude-weighted centroid
+    over the full spectrum counts float32 noise-floor bins and reported 2236 Hz
+    for 44-80 Hz noise when this was first written.
+    """
+    spec = np.abs(np.fft.rfft(x.astype(np.float64))) ** 2
+    freqs = np.fft.rfftfreq(x.size, 1.0 / sr)
+    band = (freqs >= 10.0) & (freqs <= 200.0)
+    power = spec[band]
+    if power.sum() <= 0:
+        return 0.0
+    return float((freqs[band] * power).sum() / power.sum())
+
+
+def test_default_bands_leave_the_two_voices_sharing_one_buffer() -> None:
+    """Untouched, this must be exactly the build that had no band settings."""
+    out = AudioOutput(AudioBus(_stereo_cfg()))
+    assert out._vibration._noise_low is out._vibration_rear._noise_low
+    assert out._vibration._noise_high is out._vibration_rear._noise_high
+    assert out._vibration.low_band == (44.0, 50.0)
+    assert out._vibration_rear.low_band == (44.0, 50.0)
+
+
+def test_per_channel_bands_move_each_channel_independently() -> None:
+    """The point: rear rumbly, front buzzy, measured rather than asserted."""
+    cfg = _stereo_cfg(
+        vibration_low_band_lo_hz=70.0, vibration_low_band_hi_hz=90.0,
+        vibration_high_band_lo_hz=70.0, vibration_high_band_hi_hz=90.0,
+        vibration_rear_low_band_lo_hz=25.0, vibration_rear_low_band_hi_hz=40.0,
+        vibration_rear_high_band_lo_hz=25.0, vibration_rear_high_band_hi_hz=40.0,
+        # Vibration alone, so the centroids describe the bands and nothing else.
+        engine_rumble_enabled=False, brake_rumble_enabled=False,
+        rev_limiter_enabled=False, wheel_slip_enabled=False,
+        gear_shift_enabled=False,
+    )
+    rendered = _drive(cfg, _busy(), blocks=200)
+    front = _centroid_hz(rendered[:, FRONT])
+    rear = _centroid_hz(rendered[:, REAR])
+
+    assert 70.0 <= front <= 90.0, front
+    assert 25.0 <= rear <= 40.0, rear
+    assert front - rear > 25.0, (front, rear)
+
+
+def test_the_two_voices_stop_sharing_when_the_bands_differ() -> None:
+    cfg = _stereo_cfg(vibration_rear_low_band_lo_hz=25.0,
+                      vibration_rear_low_band_hi_hz=40.0)
+    out = AudioOutput(AudioBus(cfg))
+    assert out._vibration._noise_low is not out._vibration_rear._noise_low
+    # The high bands were left alone, so those still share.
+    assert out._vibration._noise_high is out._vibration_rear._noise_high
+
+
+def test_mono_ignores_the_rear_bands_entirely() -> None:
+    """A one-channel rig must be unaffected by a setting it cannot use."""
+    plain = _drive(AudioConfig(), _busy(), blocks=60)
+    with_rear = _drive(
+        AudioConfig(vibration_rear_low_band_lo_hz=25.0,
+                    vibration_rear_low_band_hi_hz=40.0),
+        _busy(), blocks=60,
+    )
+    assert np.array_equal(plain, with_rear)
+
+
+def test_an_inverted_band_degrades_instead_of_going_silent() -> None:
+    """A slider dragged past its partner must not silence the road feel.
+
+    An empty band leaves the noise generator with no surviving bins, which
+    normalises to zero — an effect that is enabled, reports a level, and
+    produces nothing.
+    """
+    cfg = _stereo_cfg(vibration_low_band_lo_hz=90.0, vibration_low_band_hi_hz=40.0,
+                      engine_rumble_enabled=False, brake_rumble_enabled=False,
+                      rev_limiter_enabled=False, wheel_slip_enabled=False,
+                      gear_shift_enabled=False)
+    out = AudioOutput(AudioBus(cfg))
+    lo, hi = out._vibration.low_band
+    assert hi > lo, (lo, hi)
+    rendered = _drive(cfg, _busy(), blocks=120)
+    assert np.max(np.abs(rendered[:, FRONT])) > 0.0
+
+
+def test_a_band_below_what_a_shaker_renders_is_lifted() -> None:
+    out = AudioOutput(AudioBus(_stereo_cfg(vibration_low_band_lo_hz=1.0,
+                                           vibration_low_band_hi_hz=3.0)))
+    lo, hi = out._vibration.low_band
+    assert lo >= 15.0 and hi > lo, (lo, hi)

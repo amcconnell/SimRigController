@@ -238,6 +238,36 @@ limiter: duty +52.0 pts   peak +18.06 dB
 B is louder but flatter — dynamic range traded for level.
 ```
 
+### Front/rear isolation
+
+Two accelerometer pods (ADXL345 on I2C, `0x53` front and `0x1D` rear) measure what the rig
+actually delivers. **Diagnostics → Accelerometer pods** shows live orientation and vibration;
+**Measure crosstalk** pulses each shaker alone and reports how much reaches the other pod.
+
+Read the **isolation** figure, which is the mean of the two directions. Per-pod sensitivity
+error enters the two directions as reciprocals and cancels in the mean, so that number is
+right even with the pods uncalibrated or badly matched — only the asymmetry between
+directions carries the mismatch.
+
+This matters more than it sounds. Below about 100 Hz a body does not localise a source; it
+reports which part of itself is loaded, feet or back. So energy from the pedal deck arriving
+at the seat is *felt as rear*, which is the exact cue the two-channel split exists to carry.
+
+The rig here measures **-4.2 dB** — a seat plate bolted to a 1" hot-rolled steel frame, which
+is close to an ideal transmission path at these frequencies. Isolating the plate would want
+about 5 mm of static deflection under seated load to put the isolator's natural frequency near
+7 Hz, and that compliance is felt every time you brace against the brake pedal.
+
+The cheaper answer is to stop relying on position. Road vibration carries **separate noise
+bands per channel** — rear low, front high — so the two ends differ in character rather than
+location, which is the distinction a body still makes when the frame has mixed them together.
+
+Be clear that this is a fiction: no road puts a particular frequency under one axle. It buys
+discriminability at the cost of realism, and it is off by default (both channels ship with the
+same 44-50 Hz and 60-80 Hz bands). The discrete effects have always been coded this way —
+brake at 30 Hz, gear shift at 44, rev limiter at 75, slip at 90/65 — so the vocabulary already
+exists; extending it to the continuous bed is the part worth deciding deliberately.
+
 ---
 
 ## Configuration
