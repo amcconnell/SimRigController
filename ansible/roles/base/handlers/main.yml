@@ -7,3 +7,12 @@
     msg: >-
       I2C was just enabled in /boot/firmware/config.txt. Reboot the Pi
       (`sudo reboot`) before the accelerometer pods will be detected.
+
+- name: Reload systemd for fan
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart fan control
+  ansible.builtin.systemd:
+    name: simrig-fan.service
+    state: restarted

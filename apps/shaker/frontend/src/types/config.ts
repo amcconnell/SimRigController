@@ -249,6 +249,21 @@ export interface SensorStatus {
   pods: PodStatus[];
 }
 
+// Mirrors SystemStats.read() in system.py. Every field is optional — none of
+// these paths exist off a Pi. fan_duty_pct null means nothing is managing the
+// fan, which on the Argon case means it is running flat out, not stopped.
+export interface SystemStatus {
+  cpu_temp_c: number | null;
+  fan_duty_pct: number | null;
+  cpu_pct: number | null;
+  load_1m: number | null;
+  mem_used_mb: number | null;
+  mem_total_mb: number | null;
+  mem_pct: number | null;
+  warn_temp_c: number;
+  hot_temp_c: number;
+}
+
 export interface Status {
   gt7: GT7Status;
   car: CarIdentity;
@@ -259,6 +274,7 @@ export interface Status {
   limiter: LimiterStatus;
   recording: RecordingStatus | null;
   sensors: SensorStatus | null;
+  system: SystemStatus;
 }
 
 export interface ProfilesState {

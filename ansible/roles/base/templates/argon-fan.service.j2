@@ -1,0 +1,15 @@
+[Unit]
+Description=Argon case fan control for the sim rig
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/argon-fan.sh
+# Belt and braces alongside the script's own trap: however this unit ends,
+# including a hard kill the trap never sees, the fan is left running.
+ExecStopPost=/bin/sh -c 'i2cset -y {{ simrig_fan_i2c_bus }} {{ simrig_fan_address }} 100 c || true'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

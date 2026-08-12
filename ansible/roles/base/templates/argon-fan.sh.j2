@@ -1,0 +1,84 @@
+#!/bin/sh
+# Argon ONE case fan control. Managed by Ansible — edit the base role.
+#
+# The controller at {{ simrig_fan_address }} on i2c-{{ simrig_fan_i2c_bus }}
+# takes a single byte, 0-100, as fan duty. With nothing writing to it the fan
+# runs flat out, which is where this rig was: a Pi idling at 39 C with the fan
+# at full, because the case was fitted and the vendor daemon never was.
+#
+# Deliberately not the vendor installer, which pipes a remote script into a
+# root shell to deliver what is ultimately one i2c write.
+#
+# Note the controller is write-only. It acknowledges an address probe and
+# returns garbage to any read, which is why it looks like a broken sensor on a
+# bus scan — see the comment in the i2c tasks.
+
+set -u
+
+BUS={{ simrig_fan_i2c_bus }}
+ADDR={{ simrig_fan_address }}
+INTERVAL={{ simrig_fan_interval_s }}
+OFF_BELOW={{ simrig_fan_off_below_c }}
+TEMP_PATH=/sys/class/thermal/thermal_zone0/temp
+# The controller is write-only, so the only way anything else can know the
+# fan's duty is for whoever set it to say so. tmpfs, cleared on boot.
+STATE_PATH={{ simrig_fan_state_path }}
+
+write_duty() {
+    i2cset -y "$BUS" "$ADDR" "$1" c 2>/dev/null || return 1
+    printf '%s\n' "$1" > "$STATE_PATH" 2>/dev/null || true
+}
+
+# The controller holds whatever it was last told, so anything that stops this
+# script must leave the fan running rather than possibly off. Fail loud and
+# cold in preference to silent and hot.
+trap 'write_duty 100; exit 0' INT TERM
+
+last=-1
+misses=0
+
+# How many consecutive unreadable temperatures before assuming the worst. One
+# bad read is a blip and slamming the fan to full for it would be an audible
+# false alarm; several in a row is a thermometer that has genuinely gone.
+MAX_MISSES=3
+
+while :; do
+    milli=$(cat "$TEMP_PATH" 2>/dev/null || echo "")
+    case "$milli" in
+        ''|*[!0-9]*)
+            misses=$((misses + 1))
+            if [ "$misses" -ge "$MAX_MISSES" ]; then
+                # Losing the thermometer is not a reason to stop cooling.
+                if [ "$last" != "100" ]; then
+                    write_duty 100 && echo "no temperature -> fan 100%"
+                    last=100
+                fi
+            fi
+            sleep "$INTERVAL"
+            continue
+            ;;
+    esac
+    misses=0
+    t=$((milli / 1000))
+
+{% for step in simrig_fan_curve %}
+    {% if loop.first %}if{% else %}elif{% endif %} [ "$t" -ge {{ step.temp_c }} ]; then target={{ step.duty }}
+{% endfor %}
+    else target=0
+    fi
+
+    # Hysteresis on the off transition only, because that is the one anyone
+    # hears. Once running, the fan keeps going until the temperature falls
+    # clear of the lowest step rather than cycling on its boundary.
+    if [ "$target" -eq 0 ] && [ "$last" -gt 0 ] && [ "$t" -gt "$OFF_BELOW" ]; then
+        target="$last"
+    fi
+
+    if [ "$target" != "$last" ]; then
+        if write_duty "$target"; then
+            echo "${t}C -> fan ${target}%"
+            last="$target"
+        fi
+    fi
+    sleep "$INTERVAL"
+done

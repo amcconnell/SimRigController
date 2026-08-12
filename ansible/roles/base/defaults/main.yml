@@ -1,0 +1,23 @@
+# Argon ONE case fan. The controller sits on the same I2C bus as the
+# accelerometer pods and defaults to full speed unless something tells it
+# otherwise — which is why this rig ran its fan continuously while idling at
+# 39 C. Set simrig_fan_enabled to false on a Pi without an Argon case.
+simrig_fan_enabled: true
+simrig_fan_i2c_bus: 1
+simrig_fan_address: "0x1a"
+simrig_fan_interval_s: 10
+# Read by the shaker app to show fan duty on the diagnostics screen.
+simrig_fan_state_path: "/run/simrig-fan-duty"
+
+# Duty steps, highest temperature first. A Pi 4 soft-limits around 60 C and
+# throttles near 80, and this one idles in the high 30s with no fan help at
+# all, so the curve is built to stay silent for an ordinary session and only
+# spin up when something is genuinely sustained.
+simrig_fan_curve:
+  - { temp_c: 75, duty: 100 }
+  - { temp_c: 65, duty: 60 }
+  - { temp_c: 58, duty: 35 }
+
+# Once running, the fan keeps going until the temperature drops below this.
+# The gap up to the lowest curve step is the hysteresis band.
+simrig_fan_off_below_c: 52

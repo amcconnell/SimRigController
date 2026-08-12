@@ -23,6 +23,7 @@ from shaker.recording import SessionRecorder, list_sessions
 from shaker.sensors import calibration as calibration_mod
 from shaker.sensors import crosstalk as crosstalk_mod
 from shaker.sensors.pods import SensorHub
+from shaker.system import SystemStats
 
 log = logging.getLogger(__name__)
 
@@ -38,6 +39,9 @@ def create_app(
     sensors: SensorHub | None = None,
 ) -> FastAPI:
     app = FastAPI(title="SimRig Shaker")
+    # Owned here rather than passed in: it holds only the previous CPU
+    # counters a rate needs, and nothing outside the status route wants it.
+    host = SystemStats()
 
     @app.get("/api/config")
     def read_config() -> dict[str, Any]:
@@ -157,6 +161,7 @@ def create_app(
             "limiter": _limiter_diagnostics(bus),
             "recording": recorder.status() if recorder else None,
             "sensors": sensors.status() if sensors else None,
+            "system": host.read(),
         }
 
     @app.post("/api/sensors/calibrate")
