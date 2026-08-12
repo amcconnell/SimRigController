@@ -21,6 +21,7 @@ import { MotionPanel } from "./components/MotionPanel";
 import { LimiterPanel } from "./components/LimiterPanel";
 import { RecordPanel } from "./components/RecordPanel";
 import { SensorPanel } from "./components/SensorPanel";
+import { HostPanel } from "./components/HostPanel";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 type View = "tuning" | "rig" | "diagnostics";
@@ -157,6 +158,7 @@ export function App() {
             <RecordPanel recording={status?.recording} onError={setError} />
             <LimiterPanel limiter={status?.limiter} />
             <SensorPanel sensors={status?.sensors} />
+            <HostPanel system={status?.system} />
             <MotionPanel motion={status?.motion} />
             <AxlePanel axle={status?.axle} />
           </>

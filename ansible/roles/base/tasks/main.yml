@@ -75,3 +75,37 @@
     owner: root
     group: root
     mode: "0755"
+
+# --- Argon case fan ---------------------------------------------------------
+# The controller defaults to full speed unless something writes to it, so a
+# case fitted without the vendor daemon runs continuously regardless of load.
+
+- name: Install fan control script
+  ansible.builtin.template:
+    src: argon-fan.sh.j2
+    dest: /usr/local/bin/argon-fan.sh
+    owner: root
+    group: root
+    mode: "0755"
+  when: simrig_fan_enabled
+  notify: Restart fan control
+
+- name: Install fan control unit
+  ansible.builtin.template:
+    src: argon-fan.service.j2
+    dest: /etc/systemd/system/simrig-fan.service
+    owner: root
+    group: root
+    mode: "0644"
+  when: simrig_fan_enabled
+  notify:
+    - Reload systemd for fan
+    - Restart fan control
+
+- name: Enable fan control
+  ansible.builtin.systemd:
+    name: simrig-fan.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: simrig_fan_enabled and not ansible_check_mode
