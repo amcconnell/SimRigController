@@ -10,6 +10,9 @@ dependencies = [
     "watchfiles>=0.24",
     "numpy>=2.0",
     "sounddevice>=0.5",
+    # I2C for the accelerometer pods. Pure Python and installs anywhere;
+    # opening a bus is what fails off a Pi, and that is handled.
+    "smbus2>=0.4",
 ]
 
 [dependency-groups]

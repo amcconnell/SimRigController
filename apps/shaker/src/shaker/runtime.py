@@ -16,6 +16,7 @@ from shaker.config import Config
 from shaker.gt7.protocol import TelemetryPacket
 from shaker.gt7.client import GT7Client
 from shaker.recording import SessionRecorder
+from shaker.sensors.pods import SensorHub
 from shaker.web.app import create_app
 
 log = logging.getLogger(__name__)
@@ -41,6 +42,14 @@ async def run(config_path: Path = cfg_mod.DEFAULT_CONFIG_PATH) -> int:
     bus = AudioBus(state.config.audio)
     audio = AudioOutput(bus)
     recorder = SessionRecorder()
+    sensors = SensorHub(
+        bus_number=state.config.sensors.i2c_bus,
+        front_address=state.config.sensors.front_address,
+        rear_address=state.config.sensors.rear_address,
+        rate_hz=float(state.config.sensors.sample_rate_hz),
+        range_g=state.config.sensors.range_g,
+        enabled=state.config.sensors.enabled,
+    )
 
     def on_packet(packet: TelemetryPacket) -> None:
         # Recording first, and unconditionally. The rejection gates live inside
@@ -93,7 +102,8 @@ async def run(config_path: Path = cfg_mod.DEFAULT_CONFIG_PATH) -> int:
             bus.update_audio_config(new.audio)
 
     fastapi_app = create_app(
-        get_config=get_config, save_config=save_config, gt7=gt7, bus=bus, recorder=recorder
+        get_config=get_config, save_config=save_config, gt7=gt7, bus=bus,
+        recorder=recorder, sensors=sensors,
     )
     ucfg = uvicorn.Config(
         fastapi_app,
@@ -103,6 +113,10 @@ async def run(config_path: Path = cfg_mod.DEFAULT_CONFIG_PATH) -> int:
         access_log=False,
     )
     server = uvicorn.Server(ucfg)
+
+    # Never raises: a missing bus is the normal case on a development Mac and
+    # on a Pi before the pods are wired, and is reported through status().
+    sensors.start()
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
@@ -133,6 +147,7 @@ async def run(config_path: Path = cfg_mod.DEFAULT_CONFIG_PATH) -> int:
         gt7.stop()
         audio.stop()
         recorder.stop()
+        sensors.stop()
         server.should_exit = True
 
         # Give workers a brief grace period to shut down naturally. Uvicorn's

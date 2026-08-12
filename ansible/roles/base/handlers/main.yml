@@ -1,0 +1,9 @@
+- name: Reboot for I2C
+  # dtparam is read by the firmware at boot, so enabling I2C on a Pi that has
+  # never had it needs a restart. Deliberately not automatic: this deploy is
+  # normally run against a rig that may be mid-session, and silently rebooting
+  # it would be a hostile way to find that out.
+  ansible.builtin.debug:
+    msg: >-
+      I2C was just enabled in /boot/firmware/config.txt. Reboot the Pi
+      (`sudo reboot`) before the accelerometer pods will be detected.

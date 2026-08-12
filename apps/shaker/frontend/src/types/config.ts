@@ -182,6 +182,50 @@ export interface SessionFile {
   bytes: number;
 }
 
+// Mirrors Pod.status() in sensors/pods.py. Accelerations are in g.
+export interface PodStatus {
+  name: string;
+  address: string;
+  present: boolean;
+  error: string | null;
+  x: number;
+  y: number;
+  z: number;
+  // Magnitude of the slow per-axis average — gravity. 1.000 on a still rig.
+  tilt_g: number;
+  // Dominant gravity axis and sign, e.g. "Z+". An installation aid.
+  orientation: string;
+  // Gravity removed, so this is what the shaker is actually delivering.
+  vibration_rms_g: number;
+  vibration_peak_g: number;
+  samples: number;
+  rate_hz: number;
+}
+
+// Mirrors CrosstalkResult.as_dict() in sensors/crosstalk.py. Ratios are dB,
+// so 0 means the far pod matched the near one — mono in practice.
+export interface CrosstalkResult {
+  ok: boolean;
+  reason: string | null;
+  baseline: { front_g: number; rear_g: number };
+  front_drive: { front_g: number; rear_g: number };
+  rear_drive: { front_g: number; rear_g: number };
+  front_to_rear_db: number;
+  rear_to_front_db: number;
+  verdict: "good" | "usable" | "poor" | "";
+  detail: string;
+  warnings: string[];
+}
+
+export interface SensorStatus {
+  enabled: boolean;
+  bus: string;
+  available: boolean;
+  error: string | null;
+  any_present: boolean;
+  pods: PodStatus[];
+}
+
 export interface Status {
   gt7: GT7Status;
   car: CarIdentity;
@@ -191,6 +235,7 @@ export interface Status {
   axle: AxleStatus;
   limiter: LimiterStatus;
   recording: RecordingStatus | null;
+  sensors: SensorStatus | null;
 }
 
 export interface ProfilesState {

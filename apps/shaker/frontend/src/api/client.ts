@@ -2,6 +2,7 @@ import type {
   Config,
   ConfigUpdates,
   ProfilesState,
+  CrosstalkResult,
   RecordingStatus,
   SessionFile,
   Status,
@@ -78,6 +79,10 @@ export async function activateProfile(name: string): Promise<ProfilesState> {
   return jsonFetch<ProfilesState>(`/api/profiles/${encodeURIComponent(name)}/activate`, {
     method: "POST",
   });
+}
+
+export async function measureCrosstalk(): Promise<CrosstalkResult> {
+  return jsonFetch<CrosstalkResult>("/api/sensors/crosstalk", { method: "POST" });
 }
 
 export async function listRecordings(): Promise<{

@@ -155,10 +155,33 @@ class AudioConfig:
 
 
 @dataclass(frozen=True)
+class SensorConfig:
+    """Accelerometer pods. Off by default — most rigs do not have them.
+
+    All of it is rig, not tuning: which bus, which addresses, how fast. There
+    is no profile equivalent because there is nothing here to have taste about.
+    """
+
+    enabled: bool = False
+    i2c_bus: int = 1
+    # The ADXL345 supports exactly two addresses (ALT pin low / high), so this
+    # is the hardware ceiling on one bus rather than a configurable preference.
+    front_address: int = 0x53
+    rear_address: int = 0x1D
+    # 800 Hz is the datasheet ceiling for 400 kHz I2C and four times Nyquist
+    # for the band a shaker works in. See adxl345.py.
+    sample_rate_hz: int = 800
+    # Full-resolution mode keeps ~3.9 mg/LSB at every range, so the widest one
+    # costs nothing and stops a kerb strike clipping into a false plateau.
+    range_g: int = 16
+
+
+@dataclass(frozen=True)
 class Config:
     gt7: GT7Config = field(default_factory=GT7Config)
     web: WebConfig = field(default_factory=WebConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
+    sensors: SensorConfig = field(default_factory=SensorConfig)
 
 
 # Fields whose change requires a full process restart (vs. hot-reload).
@@ -173,6 +196,15 @@ RESTART_REQUIRED_FIELDS: frozenset[str] = frozenset({
     # sample rate and buffer size. Hot-swapping it would have the callback
     # index a second column the open stream does not have.
     "audio.output_channels",
+    # The sampling thread opens the bus and configures both parts once at
+    # startup; changing any of this under a running thread would leave the
+    # filters computing against a sample rate the device is no longer using.
+    "sensors.enabled",
+    "sensors.i2c_bus",
+    "sensors.front_address",
+    "sensors.rear_address",
+    "sensors.sample_rate_hz",
+    "sensors.range_g",
 })
 
 
@@ -214,6 +246,7 @@ def _from_dict(raw: dict[str, Any]) -> Config:
         gt7=GT7Config(**_known(GT7Config, gt7_raw)),
         web=WebConfig(**_known(WebConfig, raw.get("web", {}))),
         audio=AudioConfig(**_known(AudioConfig, raw.get("audio", {}))),
+        sensors=SensorConfig(**_known(SensorConfig, raw.get("sensors", {}))),
     )
 
 
@@ -222,6 +255,7 @@ def to_dict(cfg: Config) -> dict[str, Any]:
         "gt7": asdict(cfg.gt7),
         "web": asdict(cfg.web),
         "audio": asdict(cfg.audio),
+        "sensors": asdict(cfg.sensors),
     }
 
 

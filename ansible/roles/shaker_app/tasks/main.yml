@@ -9,7 +9,11 @@
   ansible.builtin.user:
     name: "{{ simrig_app_user }}"
     group: "{{ simrig_app_group }}"
-    groups: audio
+    groups:
+      - audio
+      # /dev/i2c-* is root:i2c 0660, so the service user needs this to
+      # read the accelerometer pods without running privileged.
+      - i2c
     append: true
     system: true
     shell: /usr/sbin/nologin
