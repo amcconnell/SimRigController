@@ -200,10 +200,33 @@ export interface PodStatus {
   vibration_peak_g: number;
   samples: number;
   rate_hz: number;
+  // Applied sensitivity correction; 1 means uncalibrated.
+  scale: number;
 }
 
 // Mirrors CrosstalkResult.as_dict() in sensors/crosstalk.py. Ratios are dB,
 // so 0 means the far pod matched the near one — mono in practice.
+// Mirrors CalibrationResult.as_dict() in sensors/calibration.py.
+export interface CalibrationPod {
+  ok: boolean;
+  pod: string;
+  reason: string | null;
+  measured_g: number;
+  drift_g: number;
+  vibration_g: number;
+  previous_scale: number;
+  scale: number;
+  // How far the part reads from a true 1 g, signed. Within about +/-10% is
+  // ordinary ADXL345 part tolerance.
+  error_pct: number;
+  samples: number;
+}
+
+export interface CalibrationRun {
+  ok: boolean;
+  pods: CalibrationPod[];
+}
+
 export interface CrosstalkResult {
   ok: boolean;
   reason: string | null;

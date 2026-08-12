@@ -1,7 +1,12 @@
 import { useCallback, useState } from "react";
 
-import { measureCrosstalk } from "../api/client";
-import type { CrosstalkResult, PodStatus, SensorStatus } from "../types/config";
+import { calibratePods, measureCrosstalk } from "../api/client";
+import type {
+  CalibrationRun,
+  CrosstalkResult,
+  PodStatus,
+  SensorStatus,
+} from "../types/config";
 
 function g(v: number, digits = 3): string {
   return (v < 0 ? "−" : "+") + Math.abs(v).toFixed(digits);
@@ -70,7 +75,72 @@ export function SensorPanel({ sensors }: SensorPanelProps) {
         gravity removed, so tapping the frame should move it and standing still should not.
       </p>
 
+      <Calibrate enabled={s.any_present} />
       <Crosstalk enabled={s.any_present} />
+    </div>
+  );
+}
+
+/** Trim each pod's sensitivity against gravity.
+ *
+ * The ADXL345 is specified at 256 LSB/g with a 230-282 spread, so two parts
+ * can legitimately disagree by ten percent. Harmless for orientation or tap
+ * testing; decisive for crosstalk, which divides one pod's reading by the
+ * other's and so inherits both errors at once.
+ */
+function Calibrate({ enabled }: { enabled: boolean }) {
+  const [run, setRun] = useState<CalibrationRun | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const go = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      setRun(await calibratePods());
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  return (
+    <div className="mt-3 border-t border-zinc-800/80 pt-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={go}
+          disabled={busy || !enabled}
+          className="rounded-md bg-zinc-800 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-200 transition hover:bg-zinc-700 disabled:opacity-50"
+        >
+          {busy ? "Measuring…" : "Calibrate"}
+        </button>
+        <span className="text-xs text-zinc-500">
+          {busy
+            ? "hold still — about two seconds"
+            : "trim each pod against gravity, with the rig at rest"}
+        </span>
+      </div>
+
+      {error && <p className="mt-2 text-xs text-rose-300">{error}</p>}
+
+      {run?.pods.map((p) =>
+        p.ok ? (
+          <p key={p.pod} className="mt-2 text-xs leading-relaxed text-zinc-500">
+            <span className="text-zinc-300">{p.pod}</span> read{" "}
+            <span className="font-mono tabular-nums text-zinc-300">{p.measured_g.toFixed(3)} g</span>{" "}
+            at rest — {Math.abs(p.error_pct).toFixed(1)}%{" "}
+            {p.error_pct < 0 ? "low" : "high"}, corrected by{" "}
+            <span className="font-mono tabular-nums text-zinc-300">{p.scale.toFixed(4)}</span>
+            {Math.abs(p.error_pct) > 10 && " — beyond the part's usual spread, worth a second look"}
+          </p>
+        ) : (
+          <p key={p.pod} className="mt-2 text-xs leading-relaxed text-amber-300">
+            {p.reason}
+          </p>
+        ),
+      )}
     </div>
   );
 }

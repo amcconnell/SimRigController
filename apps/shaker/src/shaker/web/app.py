@@ -20,6 +20,7 @@ from shaker.gt7.client import GT7Client
 from shaker.gt7.protocol import TelemetryPacket
 from shaker.profiles import DEFAULT_PROFILE_NAME
 from shaker.recording import SessionRecorder, list_sessions
+from shaker.sensors import calibration as calibration_mod
 from shaker.sensors import crosstalk as crosstalk_mod
 from shaker.sensors.pods import SensorHub
 
@@ -157,6 +158,26 @@ def create_app(
             "recording": recorder.status() if recorder else None,
             "sensors": sensors.status() if sensors else None,
         }
+
+    @app.post("/api/sensors/calibrate")
+    async def calibrate_pods(body: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Trim each present pod's sensitivity against gravity.
+
+        Persists the result, because a calibration that vanished on restart
+        would be worse than none — the numbers would silently change meaning
+        between sessions.
+        """
+        if sensors is None:
+            raise HTTPException(status_code=503, detail="sensors unavailable")
+        pod = (body or {}).get("pod")
+        run = await calibration_mod.calibrate(sensors, pod_name=pod)
+
+        updates = {
+            f"{r.pod}_scale": r.scale for r in run.results if r.ok and r.pod in ("front", "rear")
+        }
+        if updates:
+            save_config(cfg_mod.merge(get_config(), {"sensors": updates}))
+        return run.as_dict()
 
     @app.post("/api/sensors/crosstalk")
     async def measure_crosstalk() -> dict[str, Any]:

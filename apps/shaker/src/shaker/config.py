@@ -175,6 +175,15 @@ class SensorConfig:
     # costs nothing and stops a kerb strike clipping into a false plateau.
     range_g: int = 16
 
+    # Per-pod sensitivity correction, measured against gravity. The ADXL345 is
+    # specified at 256 LSB/g with a 230-282 spread, so two parts can disagree by
+    # 10% for entirely legitimate reasons. That is invisible in most readings
+    # and fatal in one: crosstalk is a ratio between two pods, so their
+    # independent errors add directly to a number whose useful bands are 6 dB
+    # wide. 1.0 means uncalibrated. Hot-applied — no restart.
+    front_scale: float = 1.0
+    rear_scale: float = 1.0
+
 
 @dataclass(frozen=True)
 class Config:

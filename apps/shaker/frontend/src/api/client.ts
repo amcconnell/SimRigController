@@ -2,6 +2,7 @@ import type {
   Config,
   ConfigUpdates,
   ProfilesState,
+  CalibrationRun,
   CrosstalkResult,
   RecordingStatus,
   SessionFile,
@@ -78,6 +79,14 @@ export async function renameProfile(name: string, newName: string): Promise<Prof
 export async function activateProfile(name: string): Promise<ProfilesState> {
   return jsonFetch<ProfilesState>(`/api/profiles/${encodeURIComponent(name)}/activate`, {
     method: "POST",
+  });
+}
+
+export async function calibratePods(pod?: string): Promise<CalibrationRun> {
+  return jsonFetch<CalibrationRun>("/api/sensors/calibrate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(pod ? { pod } : {}),
   });
 }
 
