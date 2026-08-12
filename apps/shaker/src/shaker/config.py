@@ -81,6 +81,24 @@ class AudioConfig:
     # at low speed and adds higher-frequency content at pace.
     vibration_speed_blend_low_mps: float = 20.0
     vibration_speed_blend_high_mps: float = 50.0
+    # Noise band edges, in Hz. The low band plays at all speeds; the high band
+    # fades in with pace. Defaults are the values these were fixed at before
+    # they became configurable, so an untouched rig is unchanged.
+    vibration_low_band_lo_hz: float = 44.0
+    vibration_low_band_hi_hz: float = 50.0
+    vibration_high_band_lo_hz: float = 60.0
+    vibration_high_band_hi_hz: float = 80.0
+    # The rear voice may use different bands. Deliberately a fiction — a real
+    # road puts no particular frequency under either axle — bought because a
+    # stiff frame couples the two ends together whatever the mixer intends, and
+    # below about 100 Hz a body tells things apart by character far better than
+    # by position. Measured -4.2 dB of isolation on this rig, so location alone
+    # carries very little. Defaults match the front, so this costs nothing until
+    # moved, and it only applies on a two-channel rig.
+    vibration_rear_low_band_lo_hz: float = 44.0
+    vibration_rear_low_band_hi_hz: float = 50.0
+    vibration_rear_high_band_lo_hz: float = 60.0
+    vibration_rear_high_band_hi_hz: float = 80.0
     # Engine rumble: continuous sine derived from RPM, amplitude from throttle.
     # rpm_divisor maps RPM to Hz (e.g., 60 → 100 Hz at 6000 RPM).
     engine_rumble_enabled: bool = True

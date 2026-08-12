@@ -32,6 +32,11 @@ _VIB_ACTIVITY_SCALE = 200.0   # maps suspension_activity to 0..1 modulation
 # raised the peak to 1.537 and RMS by 2.4 dB, so crossing the blend threshold
 # made the road bed louder rather than sharper.
 _VIB_BAND_RMS = 0.30
+# Floor and minimum width for a configured band. Below ~15 Hz a shaker
+# produces displacement rather than anything felt as texture, and a band
+# narrower than a couple of Hz rings rather than reading as noise.
+_VIB_MIN_BAND_HZ = 15.0
+_VIB_MIN_BAND_WIDTH_HZ = 2.0
 
 # Amplitude smoothing time constants, in seconds. These are time constants
 # rather than per-callback alphas on purpose: the alpha is re-derived from the
@@ -152,6 +157,24 @@ def gear_shift_rpm_factor(
     return min_gain + (max_gain - min_gain) * t
 
 
+def _clamp_band(band: tuple[float, float], sample_rate: int) -> tuple[float, float]:
+    """Keep a configured band renderable.
+
+    An inverted or empty band would leave _bandpass_noise with no surviving
+    bins, which normalizes to silence — a road-feel effect that is enabled,
+    reports a level, and produces nothing. Widened to at least one bin rather
+    than rejected, so a slider dragged past its partner degrades instead of
+    going quiet.
+    """
+    lo, hi = float(band[0]), float(band[1])
+    ceiling = sample_rate * 0.45
+    lo = min(max(lo, _VIB_MIN_BAND_HZ), ceiling)
+    hi = min(max(hi, lo + _VIB_MIN_BAND_WIDTH_HZ), ceiling)
+    if hi - lo < _VIB_MIN_BAND_WIDTH_HZ:
+        lo = max(_VIB_MIN_BAND_HZ, hi - _VIB_MIN_BAND_WIDTH_HZ)
+    return (lo, hi)
+
+
 @functools.lru_cache(maxsize=8)
 def _bandpass_noise(sample_rate: int, duration_s: float, low_hz: float, high_hz: float, seed: int) -> np.ndarray:
     """FFT-based bandpass noise: white -> rfft -> zero out-of-band bins -> irfft.
@@ -185,15 +208,35 @@ class RoadVibration:
     frequency), and a high band whose contribution scales with vehicle speed.
     """
 
-    def __init__(self, sample_rate: int, cursor_offset_s: float = 0.0) -> None:
+    def __init__(
+        self,
+        sample_rate: int,
+        cursor_offset_s: float = 0.0,
+        low_band: tuple[float, float] | None = None,
+        high_band: tuple[float, float] | None = None,
+    ) -> None:
+        """Bands default to the shipped values, so a voice constructed without
+        them is bit-identical to every build before they existed.
+
+        A two-channel rig may give each end its own bands. That is a deliberate
+        fiction — a real road does not put different frequencies under the front
+        and rear axles — bought because below about 100 Hz a body discriminates
+        by character far better than by position, and a stiff frame couples the
+        two ends together whatever the mixer intends. Left at the defaults the
+        two voices share bands, and therefore share cached buffers, exactly as
+        before.
+        """
         self.sr = sample_rate
+        low = _clamp_band(low_band or (_VIB_LOW_BAND_FREQ_LOW_HZ, _VIB_LOW_BAND_FREQ_HIGH_HZ),
+                          sample_rate)
+        high = _clamp_band(high_band or (_VIB_HIGH_BAND_FREQ_LOW_HZ, _VIB_HIGH_BAND_FREQ_HIGH_HZ),
+                           sample_rate)
+        self.low_band, self.high_band = low, high
         self._noise_low = _bandpass_noise(
-            sample_rate, _VIB_NOISE_DURATION_S,
-            _VIB_LOW_BAND_FREQ_LOW_HZ, _VIB_LOW_BAND_FREQ_HIGH_HZ, seed=1,
+            sample_rate, _VIB_NOISE_DURATION_S, low[0], low[1], seed=1,
         )
         self._noise_high = _bandpass_noise(
-            sample_rate, _VIB_NOISE_DURATION_S,
-            _VIB_HIGH_BAND_FREQ_LOW_HZ, _VIB_HIGH_BAND_FREQ_HIGH_HZ, seed=2,
+            sample_rate, _VIB_NOISE_DURATION_S, high[0], high[1], seed=2,
         )
         # A second voice reads the same buffers from a different point so the
         # two channels are decorrelated. Not for localization — amplitude

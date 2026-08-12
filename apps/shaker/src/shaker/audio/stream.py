@@ -100,7 +100,11 @@ class AudioOutput:
         self._device = cfg.device if cfg.device != "default" else None
         # Fixed for the life of the stream — output_channels is restart-required.
         self._out_channels = 2 if cfg.output_channels == 2 else 1
-        self._vibration = RoadVibration(self._sample_rate)
+        self._vibration = RoadVibration(
+            self._sample_rate,
+            low_band=(cfg.vibration_low_band_lo_hz, cfg.vibration_low_band_hi_hz),
+            high_band=(cfg.vibration_high_band_lo_hz, cfg.vibration_high_band_hi_hz),
+        )
         self._gear_shift = GearShift(self._sample_rate)
         self._engine = EngineRumble(self._sample_rate)
         self._brake = BrakeRumble(self._sample_rate)
@@ -113,7 +117,12 @@ class AudioOutput:
         self._slip_rear: WheelSlip | None = None
         if self._out_channels == 2:
             self._vibration_rear = RoadVibration(
-                self._sample_rate, cursor_offset_s=_REAR_NOISE_OFFSET_S
+                self._sample_rate,
+                cursor_offset_s=_REAR_NOISE_OFFSET_S,
+                low_band=(cfg.vibration_rear_low_band_lo_hz,
+                          cfg.vibration_rear_low_band_hi_hz),
+                high_band=(cfg.vibration_rear_high_band_lo_hz,
+                           cfg.vibration_rear_high_band_hi_hz),
             )
             self._slip_rear = WheelSlip(self._sample_rate)
         # Wiring-check schedule, advanced in rendered frames rather than wall

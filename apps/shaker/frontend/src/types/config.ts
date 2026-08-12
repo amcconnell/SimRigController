@@ -28,6 +28,14 @@ export interface AudioConfig {
   vibration_gamma: number;
   vibration_speed_blend_low_mps: number;
   vibration_speed_blend_high_mps: number;
+  vibration_low_band_lo_hz: number;
+  vibration_low_band_hi_hz: number;
+  vibration_high_band_lo_hz: number;
+  vibration_high_band_hi_hz: number;
+  vibration_rear_low_band_lo_hz: number;
+  vibration_rear_low_band_hi_hz: number;
+  vibration_rear_high_band_lo_hz: number;
+  vibration_rear_high_band_hi_hz: number;
 
   engine_rumble_enabled: boolean;
   engine_rumble_gain: number;
