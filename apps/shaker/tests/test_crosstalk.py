@@ -234,3 +234,67 @@ def test_result_is_json_safe() -> None:
         _teardown(hub, rig)
     text = json.dumps(r.as_dict())
     assert "Infinity" not in text and "NaN" not in text
+
+
+# --- the property the isolation figure exists for --------------------------
+
+
+def test_isolation_is_the_mean_of_the_two_directions() -> None:
+    abus, hub, rig = _rig(coupling=0.25)
+    try:
+        r = asyncio.run(measure(abus, hub, **_FAST))
+    finally:
+        _teardown(hub, rig)
+    assert r.ok, r.reason
+    assert r.isolation_db == pytest.approx(
+        0.5 * (r.front_to_rear_db + r.rear_to_front_db), abs=0.05)
+    assert r.asymmetry_db == pytest.approx(
+        r.front_to_rear_db - r.rear_to_front_db, abs=0.05)
+
+
+def test_isolation_survives_badly_mismatched_pods() -> None:
+    """The whole point: the mean cancels per-pod sensitivity error.
+
+    Each pod reads with its own factor, so front->rear carries k_rear/k_front
+    and rear->front carries the reciprocal. Multiplying cancels them. Here the
+    pods are deliberately mismatched by 25% in opposite directions — which
+    would wreck either direction on its own — and the mean must not move.
+    """
+    matched = _rig(coupling=0.25)
+    try:
+        base = asyncio.run(measure(matched[0], matched[1], **_FAST))
+    finally:
+        _teardown(matched[1], matched[2])
+    assert base.ok, base.reason
+
+    abus, hub, rig = _rig(coupling=0.25)
+    try:
+        # A 1.25 / 0.80 split: a 3.9 dB error injected into each direction.
+        hub.set_scale("front", 1.25)
+        hub.set_scale("rear", 0.80)
+        time.sleep(0.4)
+        skewed = asyncio.run(measure(abus, hub, **_FAST))
+    finally:
+        _teardown(hub, rig)
+
+    assert skewed.ok, skewed.reason
+    # Each direction is thrown well off...
+    assert abs(skewed.front_to_rear_db - base.front_to_rear_db) > 2.0
+    assert abs(skewed.rear_to_front_db - base.rear_to_front_db) > 2.0
+    # ...and the mean is not.
+    assert skewed.isolation_db == pytest.approx(base.isolation_db, abs=0.6), (
+        base.as_dict(), skewed.as_dict())
+
+
+def test_verdict_follows_isolation_not_the_worse_direction() -> None:
+    """Judging on the worse direction would judge on the corrupted quantity."""
+    abus, hub, rig = _rig(coupling=0.25)
+    try:
+        hub.set_scale("front", 1.4)     # skew one direction hard
+        time.sleep(0.4)
+        r = asyncio.run(measure(abus, hub, **_FAST))
+    finally:
+        _teardown(hub, rig)
+    assert r.ok, r.reason
+    assert r.verdict == classify(r.isolation_db)[0]
+    assert abs(r.asymmetry_db) > 3.0, "premise: the directions should disagree here"
