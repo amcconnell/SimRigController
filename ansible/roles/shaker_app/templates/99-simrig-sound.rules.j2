@@ -1,0 +1,19 @@
+# Re-apply output mixer levels whenever a USB sound card appears.
+# Managed by Ansible — edit the shaker_app role, not this file.
+#
+# simrig-alsa.service is ordered before the shaker at boot, which covers a Pi
+# that starts with its DAC already plugged in. It does not cover swapping the
+# DAC on a running rig: the replacement keeps whatever level it enumerated
+# with, and every C-Media adapter tried here has come up at -20 dB. That is
+# silent, survives a restart of the app, and looks exactly like a tuning
+# problem rather than a mixer one.
+#
+# Matched on ID_BUS rather than the product string. Vendors change the model
+# name between otherwise identical adapters — this rig went from "USB Advanced
+# Audio Device" to "USB Audio Device" on a like-for-like replacement.
+#
+# KERNEL=="card*" so this fires once per card, rather than again for each of
+# its control and pcm nodes. SYSTEMD_WANTS rather than RUN+= because udev kills
+# long-running RUN programs, and amixer has to wait for the control device.
+
+ACTION=="add", SUBSYSTEM=="sound", KERNEL=="card*", ENV{ID_BUS}=="usb", TAG+="systemd", ENV{SYSTEMD_WANTS}="simrig-alsa.service"

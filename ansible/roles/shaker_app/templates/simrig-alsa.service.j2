@@ -8,7 +8,10 @@ Wants=sound.target
 
 [Service]
 Type=oneshot
-RemainAfterExit=true
+# Deliberately NOT RemainAfterExit. Leaving the unit "active (exited)" means a
+# later Wants= from udev is a no-op, so hot-plugging a card would queue a run
+# that never happens. Ordering before the shaker at boot does not depend on it:
+# a oneshot counts as still starting until ExecStart returns.
 ExecStart={{ simrig_app_root }}/bin/alsa-levels.sh
 
 [Install]

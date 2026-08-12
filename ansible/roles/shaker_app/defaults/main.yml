@@ -4,10 +4,17 @@ simrig_default_web_host: "0.0.0.0"
 simrig_default_web_port: 80
 
 # Output mixer levels applied at boot, before the shaker service starts.
-# USB adapters commonly enumerate attenuated — the C-Media dongle on this rig
-# comes up at -20 dB, quieter than the Pi's own jack. Cards are matched by name
-# because the index moves when other devices are plugged in.
+# USB adapters commonly enumerate attenuated — every C-Media dongle tried on
+# this rig has come up at -20 dB, quieter than the Pi's own jack.
+#
+# Matched on the *driver* rather than the product name. /proc/asound/cards
+# reports "USB-Audio" for every USB audio class device, whereas the product
+# string is whatever the vendor felt like: swapping one C-Media dongle for
+# another took this rig from "USB Advanced Audio Device" to "USB Audio Device",
+# the match silently stopped applying, and the new card sat at -20 dB. Matching
+# the driver survives that, and the rig only ever has one USB sound card.
+# Still not the index, which moves whenever anything else is plugged in.
 simrig_alsa_levels:
-  - card_match: "USB Advanced Audio Device"
+  - card_match: "USB-Audio"
     control: "Speaker"
     value: "100%"

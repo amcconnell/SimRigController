@@ -11,3 +11,7 @@
   ansible.builtin.systemd:
     name: simrig-alsa.service
     state: restarted
+
+- name: Reload udev rules
+  ansible.builtin.command: udevadm control --reload-rules
+  changed_when: true

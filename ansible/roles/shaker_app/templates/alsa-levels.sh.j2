@@ -15,19 +15,34 @@
 
 set -u
 
+# Retried, because this also runs from a udev hot-plug where the card node
+# exists before its control device does. At boot the first attempt succeeds and
+# the loop costs nothing.
+_ATTEMPTS=12
+_DELAY=0.25
+
 {% for c in simrig_alsa_levels %}
-card="$(cat /proc/asound/cards 2>/dev/null \
-        | grep -i -- '{{ c.card_match }}' \
-        | head -1 | awk '{print $1}')"
-if [ -n "${card:-}" ]; then
-    if amixer -c "$card" sset '{{ c.control }}' '{{ c.value }}' >/dev/null 2>&1; then
+n=0
+while [ "$n" -lt "$_ATTEMPTS" ]; do
+    n=$((n + 1))
+    card="$(cat /proc/asound/cards 2>/dev/null \
+            | grep -i -- '{{ c.card_match }}' \
+            | head -1 | awk '{print $1}')"
+    if [ -n "${card:-}" ] \
+       && amixer -c "$card" sset '{{ c.control }}' '{{ c.value }}' >/dev/null 2>&1; then
         echo "set card $card '{{ c.control }}' to {{ c.value }} (matched '{{ c.card_match }}')"
-    else
-        echo "card $card has no control '{{ c.control }}' — skipping" >&2
+        break
     fi
-else
-    echo "no card matching '{{ c.card_match }}' — skipping" >&2
-fi
+    if [ "$n" -ge "$_ATTEMPTS" ]; then
+        if [ -n "${card:-}" ]; then
+            echo "card $card never accepted control '{{ c.control }}' — skipping" >&2
+        else
+            echo "no card matching '{{ c.card_match }}' — skipping" >&2
+        fi
+        break
+    fi
+    sleep "$_DELAY"
+done
 {% endfor %}
 
 exit 0
