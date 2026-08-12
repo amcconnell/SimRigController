@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import re
 from dataclasses import fields
 from pathlib import Path
@@ -143,3 +145,27 @@ def test_merge_leaves_other_sections_untouched() -> None:
     assert merged.gt7 == base.gt7
     assert merged.web == base.web
     assert merged.audio.master_gain == pytest.approx(0.1)
+
+
+def test_calibration_does_not_require_a_restart() -> None:
+    """Trimming a pod must not bounce the audio stream.
+
+    Everything else under [sensors] is restart-required because the sampling
+    thread configures the parts once at startup. The scale factors are just a
+    multiplier applied per sample, and a calibration that interrupted a session
+    would be a poor trade for a number nobody is watching at the time.
+    """
+    from shaker.config import Config, SensorConfig
+
+    base = Config()
+    trimmed = replace(base, sensors=replace(base.sensors, front_scale=1.1, rear_scale=0.9))
+    assert cfg_mod.diff_paths(base, trimmed) == {"sensors.front_scale", "sensors.rear_scale"}
+    assert not cfg_mod.needs_restart(base, trimmed)
+
+    # ...while the things that genuinely need one still do.
+    for field_name, value in (
+        ("enabled", True), ("i2c_bus", 3), ("front_address", 0x1D),
+        ("rear_address", 0x53), ("sample_rate_hz", 400), ("range_g", 4),
+    ):
+        moved = replace(base, sensors=replace(SensorConfig(), **{field_name: value}))
+        assert cfg_mod.needs_restart(base, moved), field_name

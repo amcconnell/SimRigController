@@ -49,6 +49,8 @@ async def run(config_path: Path = cfg_mod.DEFAULT_CONFIG_PATH) -> int:
         rate_hz=float(state.config.sensors.sample_rate_hz),
         range_g=state.config.sensors.range_g,
         enabled=state.config.sensors.enabled,
+        front_scale=state.config.sensors.front_scale,
+        rear_scale=state.config.sensors.rear_scale,
     )
 
     def on_packet(packet: TelemetryPacket) -> None:
@@ -100,6 +102,12 @@ async def run(config_path: Path = cfg_mod.DEFAULT_CONFIG_PATH) -> int:
             gt7.update_config(new.gt7)
         if "audio" in changed_sections:
             bus.update_audio_config(new.audio)
+        if "sensors" in changed_sections:
+            # Only the calibration factors are hot-reloadable; everything
+            # else in this section is restart-required, so by the time we
+            # get here the addresses and rate cannot have moved.
+            sensors.set_scale("front", new.sensors.front_scale)
+            sensors.set_scale("rear", new.sensors.rear_scale)
 
     fastapi_app = create_app(
         get_config=get_config, save_config=save_config, gt7=gt7, bus=bus,

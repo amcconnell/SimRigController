@@ -113,9 +113,14 @@ class PodStats:
 class Pod:
     """One sensor plus the running statistics kept for it."""
 
-    def __init__(self, name: str, address: int, rate_hz: float, range_g: int) -> None:
+    def __init__(self, name: str, address: int, rate_hz: float, range_g: int,
+                 scale: float = 1.0) -> None:
         self.name = name
         self.address = address
+        # Sensitivity correction from calibration; 1.0 until measured. Applied
+        # to raw samples so tilt, vibration and measurement windows all inherit
+        # it rather than each having to remember.
+        self.scale = scale
         self._rate_hz = rate_hz
         self._range_g = range_g
         self._dev: ADXL345 | None = None
@@ -198,17 +203,20 @@ class Pod:
             # slowly subside. The first sample is a far better estimate of
             # gravity than zero is, even if the rig is moving at that instant.
             first = samples[0]
-            gx, gy, gz = first.x, first.y, first.z
+            gx, gy, gz = (first.x * self.scale, first.y * self.scale,
+                          first.z * self.scale)
             self._primed = True
         ms, peak = self._ms, self._peak
         # This batch only. Folded into the window below if one is open, so
         # the loop stays branch-free and nothing accumulates when it is not.
         batch_sumsq = 0.0
+        k = self.scale
         for sample in samples:
-            gx += ga * (sample.x - gx)
-            gy += ga * (sample.y - gy)
-            gz += ga * (sample.z - gz)
-            ax, ay, az = sample.x - gx, sample.y - gy, sample.z - gz
+            sx, sy, sz = sample.x * k, sample.y * k, sample.z * k
+            gx += ga * (sx - gx)
+            gy += ga * (sy - gy)
+            gz += ga * (sz - gz)
+            ax, ay, az = sx - gx, sy - gy, sz - gz
             mag2 = ax * ax + ay * ay + az * az
             ms += ra * (mag2 - ms)
             mag = math.sqrt(mag2)
@@ -217,7 +225,7 @@ class Pod:
             batch_sumsq += mag2
 
         last = samples[-1]
-        s.x, s.y, s.z = last.x, last.y, last.z
+        s.x, s.y, s.z = last.x * k, last.y * k, last.z * k
         s.gx, s.gy, s.gz = gx, gy, gz
         self._ms = ms
         if self._win_open:
@@ -245,6 +253,18 @@ class Pod:
         pa = _alpha(dt_s, _PEAK_TAU_S)
         self._peak *= 1.0 - pa
         self.stats.vibration_peak_g = self._peak if self._peak > _QUIET_G else 0.0
+
+    def set_scale(self, scale: float) -> None:
+        """Change the sensitivity correction and re-seed gravity.
+
+        The stored gravity vector is in the *old* scale, so leaving it would
+        make every sample differ from it by the size of the correction — a
+        phantom shake decaying over about seven seconds, right after the one
+        action whose whole point is to make the numbers trustworthy. Re-priming
+        costs one sample.
+        """
+        self.scale = scale
+        self._primed = False
 
     def begin_window(self) -> None:
         """Start integrating AC energy for a measurement.
@@ -291,6 +311,7 @@ class Pod:
             "vibration_peak_g": round(s.vibration_peak_g, 4),
             "samples": s.samples,
             "rate_hz": round(s.rate_hz, 1),
+            "scale": round(self.scale, 5),
         }
 
 
@@ -304,6 +325,8 @@ class SensorHub:
     rate_hz: float = 800.0
     range_g: int = 16
     enabled: bool = True
+    front_scale: float = 1.0
+    rear_scale: float = 1.0
 
     _bus: I2CBus | None = field(default=None, init=False)
     _bus_error: str | None = field(default=None, init=False)
@@ -313,9 +336,15 @@ class SensorHub:
 
     def __post_init__(self) -> None:
         self._pods = [
-            Pod("front", self.front_address, self.rate_hz, self.range_g),
-            Pod("rear", self.rear_address, self.rate_hz, self.range_g),
+            Pod("front", self.front_address, self.rate_hz, self.range_g, self.front_scale),
+            Pod("rear", self.rear_address, self.rate_hz, self.range_g, self.rear_scale),
         ]
+
+    def set_scale(self, name: str, scale: float) -> None:
+        """Apply a calibration without restarting."""
+        for pod in self._pods:
+            if pod.name == name:
+                pod.set_scale(scale)
 
     def start(self, bus: I2CBus | None = None) -> None:
         """Open the bus and begin sampling. Never raises — absence is a state.
