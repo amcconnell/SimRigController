@@ -164,5 +164,17 @@ def update_active_audio(state: dict[str, Any], audio: AudioConfig) -> dict[str, 
 
 
 def apply_to_live_config(audio: AudioConfig, live: Config) -> Config:
-    """Build a new Config with the given audio section, preserving gt7/web."""
-    return Config(gt7=live.gt7, web=live.web, audio=audio)
+    """Replace only the audio section, carrying everything else through.
+
+    Deliberately `replace` rather than naming the sections to keep. Listing
+    them means every section added later is silently rebuilt from its
+    dataclass defaults, which is what happened when [sensors] arrived: this
+    line still said gt7/web/audio, so activating any profile turned the
+    accelerometers off and threw away their calibration. Nothing errored and
+    nothing logged — the pods simply went quiet, and the user had not touched
+    anything they would describe as config.
+
+    That is the same failure the rig/profile split exists to prevent, so it is
+    fixed in the form that cannot recur rather than by adding `sensors=` here.
+    """
+    return replace(live, audio=audio)
