@@ -226,3 +226,31 @@ def test_round_trip_through_a_profile_preserves_every_taste_field() -> None:
     profiles.create(state, "P", tuned)
     back = profiles.get_audio(state, "P", tuned)
     assert back == tuned
+
+
+def test_activating_a_profile_touches_only_the_audio_section() -> None:
+    """Every other section must survive, including ones added later.
+
+    The original spelled out gt7/web/audio, so when [sensors] was added it was
+    rebuilt from defaults on every activation — the pods switched themselves
+    off and lost their calibration, with no error and no log line. This asserts
+    over fields(Config) rather than a fixed list so a future section cannot
+    reintroduce it.
+    """
+    from dataclasses import fields as dc_fields
+
+    from shaker.config import Config, GT7Config, SensorConfig, WebConfig
+
+    live = Config(
+        gt7=GT7Config(ps5_ip="192.168.1.135"),
+        web=WebConfig(host="0.0.0.0", port=80),
+        audio=AudioConfig(master_gain=0.5, output_channels=2),
+        sensors=SensorConfig(enabled=True, front_scale=1.18715, rear_scale=0.93789),
+    )
+    applied = profiles.apply_to_live_config(AudioConfig(master_gain=0.9), live)
+
+    assert applied.audio.master_gain == 0.9
+    for f in dc_fields(Config):
+        if f.name == "audio":
+            continue
+        assert getattr(applied, f.name) == getattr(live, f.name), f.name
