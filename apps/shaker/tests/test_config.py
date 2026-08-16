@@ -169,3 +169,32 @@ def test_calibration_does_not_require_a_restart() -> None:
     ):
         moved = replace(base, sensors=replace(SensorConfig(), **{field_name: value}))
         assert cfg_mod.needs_restart(base, moved), field_name
+
+
+def test_no_component_declares_a_prop_called_ref() -> None:
+    """`ref` is reserved by React and must not be used as a data prop.
+
+    MotionPanel passed `ref={m?.long_accel}` — a number — to a function
+    component that declared `ref: number | undefined` in its own props type,
+    so TypeScript raised nothing. React did: passing a number where it expects
+    a callback, a ref object or null throws during render.
+
+    It was invisible until it wasn't. `m?.long_accel` is undefined while no
+    telemetry is arriving, and React ignores an undefined ref; the moment GT7
+    connected and motion data appeared it became a number, the render threw,
+    and the entire diagnostics screen went blank with no message.
+    """
+    import re
+
+    frontend = Path(__file__).resolve().parents[1] / "frontend" / "src"
+    offenders = []
+    for path in frontend.rglob("*.tsx"):
+        for n, line in enumerate(path.read_text().splitlines(), 1):
+            # A `ref:` field inside a props type annotation. Legitimate uses —
+            # useRef, forwardRef — never declare one.
+            if re.match(r"^\s+ref\??:\s", line):
+                offenders.append(f"{path.name}:{n}: {line.strip()}")
+    assert not offenders, (
+        "these declare a prop named `ref`, which React reserves:\n  "
+        + "\n  ".join(offenders)
+    )
