@@ -51,9 +51,9 @@ export function MotionPanel({ motion }: MotionPanelProps) {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <Pair label="surge" raw={m?.surge} ref={m?.long_accel} refLabel="d(speed)/dt" />
-        <Pair label="sway" raw={m?.sway} ref={m?.lat_accel} refLabel="v x yaw rate" />
-        <Pair label="heave" raw={m?.heave} ref={undefined} refLabel="no reference" />
+        <Pair label="surge" raw={m?.surge} compare={m?.long_accel} refLabel="d(speed)/dt" />
+        <Pair label="sway" raw={m?.sway} compare={m?.lat_accel} refLabel="v x yaw rate" />
+        <Pair label="heave" raw={m?.heave} compare={undefined} refLabel="no reference" />
       </div>
 
       <p className="mt-3 text-xs leading-relaxed text-zinc-500">
@@ -72,12 +72,16 @@ export function MotionPanel({ motion }: MotionPanelProps) {
 function Pair({
   label,
   raw,
-  ref: reference,
+  compare: reference,
   refLabel,
 }: {
   label: string;
   raw: number | undefined;
-  ref: number | undefined;
+  // Deliberately not called `ref`. React reserves that prop name, so passing a
+  // number through it is invalid and throws once the value stops being
+  // undefined — which here meant the whole diagnostics screen went blank the
+  // moment GT7 connected and motion data started arriving.
+  compare: number | undefined;
   refLabel: string;
 }) {
   return (

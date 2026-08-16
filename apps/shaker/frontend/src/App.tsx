@@ -22,6 +22,7 @@ import { LimiterPanel } from "./components/LimiterPanel";
 import { RecordPanel } from "./components/RecordPanel";
 import { SensorPanel } from "./components/SensorPanel";
 import { HostPanel } from "./components/HostPanel";
+import { PanelBoundary } from "./components/PanelBoundary";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 type View = "tuning" | "rig" | "diagnostics";
@@ -155,12 +156,24 @@ export function App() {
               being compressed, and whether the protocol assumptions still hold from the
               driver's seat. Nothing here changes what the rig does.
             </p>
-            <RecordPanel recording={status?.recording} onError={setError} />
-            <LimiterPanel limiter={status?.limiter} />
-            <SensorPanel sensors={status?.sensors} />
-            <HostPanel system={status?.system} />
-            <MotionPanel motion={status?.motion} />
-            <AxlePanel axle={status?.axle} />
+            <PanelBoundary label="Session recording">
+              <RecordPanel recording={status?.recording} onError={setError} />
+            </PanelBoundary>
+            <PanelBoundary label="Output limiter">
+              <LimiterPanel limiter={status?.limiter} />
+            </PanelBoundary>
+            <PanelBoundary label="Accelerometer pods">
+              <SensorPanel sensors={status?.sensors} />
+            </PanelBoundary>
+            <PanelBoundary label="Pi health">
+              <HostPanel system={status?.system} />
+            </PanelBoundary>
+            <PanelBoundary label="Body motion">
+              <MotionPanel motion={status?.motion} />
+            </PanelBoundary>
+            <PanelBoundary label="Axle diagnostics">
+              <AxlePanel axle={status?.axle} />
+            </PanelBoundary>
           </>
         )}
 
