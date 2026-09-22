@@ -207,6 +207,19 @@ class AudioBus:
         self.wiring_pulse_s: float = 1.0
         self.wiring_gap_s: float = 0.5
 
+        # Measurement tone: one channel, one frequency, for a fixed time. The
+        # wiring check answers "is the rear channel actually the rear?" and is
+        # hard-wired to 40 Hz for that; this exists because a swept measurement
+        # needs to choose the frequency, and needs one channel silent while the
+        # other plays. Same contract as the wiring check — it replaces the mix
+        # entirely and bypasses gain, trim and the limiter, so a level measured
+        # at 90 Hz is comparable with one at 20 Hz.
+        self.tone_count: int = 0
+        self.tone_freq_hz: float = 40.0
+        self.tone_channel: int = 0
+        self.tone_s: float = 1.0
+        self.tone_amplitude: float = 0.5
+
         # Post-pan output levels, written by the audio thread and read by the
         # web thread. Plain floats: torn reads are harmless for a meter, and a
         # lock on the audio path is not.
@@ -349,6 +362,27 @@ class AudioBus:
             envelope = 1.0 - abs(2.0 * progress - 1.0)
             return self._test_slip_peak_mps * envelope
         return self.features.slip_rear
+
+    def trigger_tone(
+        self,
+        freq_hz: float,
+        channel: int,
+        seconds: float,
+        amplitude: float = 0.5,
+    ) -> None:
+        """Ask the audio thread for one tone. Returns immediately.
+
+        Only the request lives here; the audio thread advances the schedule in
+        rendered frames, so the tone lasts exactly as long as it sounds no
+        matter how the callback is scheduled. A measurement that timed itself
+        by wall clock would integrate over a window that had drifted off the
+        tone it was measuring.
+        """
+        self.tone_freq_hz = freq_hz
+        self.tone_channel = channel
+        self.tone_s = seconds
+        self.tone_amplitude = amplitude
+        self.tone_count += 1
 
     def trigger_wiring_check(self, pulse_s: float = 1.0, gap_s: float = 0.5) -> None:
         self.wiring_pulse_s = pulse_s

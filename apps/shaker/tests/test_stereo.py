@@ -377,12 +377,21 @@ def _centroid_hz(x: np.ndarray, sr: int = 48000) -> float:
 
 
 def test_default_bands_leave_the_two_voices_sharing_one_buffer() -> None:
-    """Untouched, this must be exactly the build that had no band settings."""
+    """Matched bands must cost one noise buffer, not two.
+
+    This used to pin the literal 44-50, on the reasoning that an untouched rig
+    should be exactly the build that had no band settings. The defaults have
+    since moved onto frequencies the rig was measured to isolate well, so the
+    literal only recorded where they happened to start. What is worth
+    protecting is the sharing: identical bands are the common case, and
+    allocating a second buffer for them would waste the memory and the work on
+    every block for no audible difference.
+    """
     out = AudioOutput(AudioBus(_stereo_cfg()))
     assert out._vibration._noise_low is out._vibration_rear._noise_low
     assert out._vibration._noise_high is out._vibration_rear._noise_high
-    assert out._vibration.low_band == (44.0, 50.0)
-    assert out._vibration_rear.low_band == (44.0, 50.0)
+    assert out._vibration.low_band == out._vibration_rear.low_band
+    assert out._vibration.high_band == out._vibration_rear.high_band
 
 
 def test_per_channel_bands_move_each_channel_independently() -> None:
@@ -449,3 +458,32 @@ def test_a_band_below_what_a_shaker_renders_is_lifted() -> None:
                                            vibration_low_band_hi_hz=3.0)))
     lo, hi = out._vibration.low_band
     assert lo >= 15.0 and hi > lo, (lo, hi)
+
+
+def test_band_edges_require_a_restart_because_the_noise_is_baked() -> None:
+    """A band change the rig ignores must not be reported as applied.
+
+    Each voice generates its bandpass noise once, at construction, so pushing
+    a new band edge into a running bus changes the stored config and nothing
+    audible. This pins both halves of that: the staleness is real, and the
+    config layer knows to restart rather than claim success.
+    """
+    from shaker.config import RESTART_REQUIRED_FIELDS
+
+    bus = AudioBus(_stereo_cfg())
+    out = AudioOutput(bus)
+    before = out._vibration.low_band
+
+    bus.update_audio_config(
+        _stereo_cfg(vibration_low_band_lo_hz=70.0, vibration_low_band_hi_hz=90.0)
+    )
+    assert out._vibration.low_band == before, (
+        "the voice picked up a new band live; if that is now true, these fields "
+        "should come back out of RESTART_REQUIRED_FIELDS"
+    )
+
+    for edge in ("low_lo", "low_hi", "high_lo", "high_hi"):
+        lo_hi, which = edge.split("_")
+        for channel in ("", "rear_"):
+            field = f"audio.vibration_{channel}{lo_hi}_band_{which}_hz"
+            assert field in RESTART_REQUIRED_FIELDS, field

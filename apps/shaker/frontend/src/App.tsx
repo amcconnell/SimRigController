@@ -21,6 +21,7 @@ import { MotionPanel } from "./components/MotionPanel";
 import { LimiterPanel } from "./components/LimiterPanel";
 import { RecordPanel } from "./components/RecordPanel";
 import { SensorPanel } from "./components/SensorPanel";
+import { SweepPanel } from "./components/SweepPanel";
 import { HostPanel } from "./components/HostPanel";
 import { PanelBoundary } from "./components/PanelBoundary";
 
@@ -164,6 +165,9 @@ export function App() {
             </PanelBoundary>
             <PanelBoundary label="Accelerometer pods">
               <SensorPanel sensors={status?.sensors} />
+            </PanelBoundary>
+            <PanelBoundary label="Frequency sweep">
+              <SweepPanel sensors={status?.sensors} onError={setError} />
             </PanelBoundary>
             <PanelBoundary label="Pi health">
               <HostPanel system={status?.system} />

@@ -7,6 +7,7 @@ import type {
   RecordingStatus,
   SessionFile,
   Status,
+  SweepStatus,
 } from "../types/config";
 
 async function jsonFetch<T>(
@@ -92,6 +93,14 @@ export async function calibratePods(pod?: string): Promise<CalibrationRun> {
 
 export async function measureCrosstalk(): Promise<CrosstalkResult> {
   return jsonFetch<CrosstalkResult>("/api/sensors/crosstalk", { method: "POST" });
+}
+
+export async function startSweep(): Promise<SweepStatus> {
+  return jsonFetch<SweepStatus>("/api/sensors/sweep", { method: "POST" });
+}
+
+export async function readSweep(): Promise<SweepStatus> {
+  return jsonFetch<SweepStatus>("/api/sensors/sweep");
 }
 
 export async function listRecordings(): Promise<{

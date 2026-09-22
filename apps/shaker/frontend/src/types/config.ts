@@ -298,3 +298,71 @@ export interface ProfilesState {
 }
 
 export const DEFAULT_PROFILE_NAME = "default";
+
+// Mirrors SweepPoint.as_dict() in sensors/sweep.py. One tone, on one channel,
+// as seen by both pods.
+export interface SweepPoint {
+  freq_hz: number;
+  drive: string;
+  near_g: number;
+  far_g: number;
+  ambient_near_g: number;
+  ambient_far_g: number;
+  // Where the detector actually found the tone. Drifts a percent or two from
+  // freq_hz because the pods clock themselves; a large gap means trouble.
+  found_hz: number;
+  ratio_db: number | null;
+  ok: boolean;
+  // The far pod was at its noise floor, so the true ratio is somewhere below
+  // the one reported — a bound, not a measurement.
+  floor_limited: boolean;
+  note: string | null;
+}
+
+export interface SweepCurvePoint {
+  freq_hz: number;
+  front_to_rear_db: number | null;
+  rear_to_front_db: number | null;
+  isolation_db: number | null;
+  floor_limited: boolean;
+  front_near_g: number | null;
+  rear_near_g: number | null;
+}
+
+export interface SweepSummary {
+  measured_points: number;
+  usable_points: number;
+  // Frequency of worst isolation. Not named a resonance: the first real sweep
+  // was jagged with structural modes rather than shaped like an isolator, so
+  // the worst point is a panel doing something, not a mount property.
+  worst_hz?: number;
+  worst_isolation_db?: number;
+  best_hz?: number;
+  best_isolation_db?: number;
+  // Best to worst. The number that decides whether choosing output frequencies
+  // is worth more than mechanical work.
+  spread_db?: number;
+  front_peak_hz?: number;
+  front_peak_g?: number;
+  rear_peak_hz?: number;
+  rear_peak_g?: number;
+  curve: SweepCurvePoint[];
+}
+
+export interface SweepResult {
+  ok: boolean;
+  reason: string | null;
+  warnings: string[];
+  summary: SweepSummary;
+  points: SweepPoint[];
+}
+
+export interface SweepStatus {
+  running: boolean;
+  done: number;
+  total: number;
+  elapsed_s: number;
+  remaining_s: number | null;
+  error: string | null;
+  result: SweepResult | null;
+}
