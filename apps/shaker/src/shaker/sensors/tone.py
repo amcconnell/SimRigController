@@ -32,15 +32,23 @@ from __future__ import annotations
 
 import numpy as np
 
-# Half-width of the frequency search, as a fraction of the target. Covers the
-# ~2.5% spread already observed between the two pods' actual sample rates with
-# room for drift, and stays far narrower than the spacing between sweep points.
-SEARCH_FRAC = 0.04
+# Half-width of the frequency search, as a fraction of the target.
+#
+# Sized from the hardware rather than from theory. The rate a pod reports is
+# counted over about a second and quantised by FIFO batching, so it wanders
+# even though the oscillator underneath does not: measured live on the rig, the
+# front pod reported 772-789 Hz and the rear 784-820, a 4.5% spread on the rear
+# alone. That wander is handed straight to this detector, and a search narrower
+# than it would sometimes miss the tone and report a working shaker as silent.
+#
+# Still comfortably inside the 12.2% spacing between sixth-octave sweep points,
+# so the search can never wander onto the neighbouring tone.
+SEARCH_FRAC = 0.08
 
 # Trial frequencies across that span. Spaced to land within a fraction of the
 # ~1/T detector bandwidth of the true tone, so the peak is never missed between
 # two trials.
-SEARCH_STEPS = 21
+SEARCH_STEPS = 33
 
 # Below this many samples the window is too short for the average to mean
 # anything and the result would be dominated by whatever phase it started at.

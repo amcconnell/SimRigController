@@ -74,17 +74,22 @@ def test_detect_combines_axes_in_power() -> None:
     assert split == pytest.approx(one, rel=0.02)
 
 
-def test_detect_survives_a_sample_rate_error() -> None:
-    """The pods run 779 and 789 Hz against a nominal 800, and drift with heat.
+@pytest.mark.parametrize("told_rate", [820.0, 772.0])
+def test_detect_survives_the_rate_error_the_real_pods_produce(told_rate: float) -> None:
+    """A pod's reported rate wanders; the detector must not care.
 
-    A lock-in that trusted the nominal rate would rotate through a full turn
-    during the window at the top of the band and average the tone to nothing —
-    reporting a dead shaker. The frequency search is what prevents that.
+    Measured on the rig: the front pod reported 772-789 Hz over twelve seconds
+    and the rear 784-820, because the figure is counted over about a second and
+    quantised by FIFO batching. That wander reaches this detector as the sample
+    rate. A lock-in that believed it would rotate through a full turn during the
+    window at the top of the band and average the tone away — reporting a dead
+    shaker from a working one, which is the expensive failure here because it
+    sends someone under the rig with a spanner. The frequency search is what
+    prevents it, and this pins the search to what the hardware actually does.
     """
     x, y, z = _samples(110.0, 0.2, 800, rate=RATE)
-    # Told the wrong rate, by more than the spread between the two real pods.
-    amp, _ = detect(x, y, z, 779.0, 110.0)
-    assert amp == pytest.approx(0.2 / math.sqrt(2), rel=0.10)
+    amp, _ = detect(x, y, z, told_rate, 110.0)
+    assert amp == pytest.approx(0.2 / math.sqrt(2), rel=0.12)
 
 
 def test_detect_rejects_a_tone_at_another_frequency() -> None:
