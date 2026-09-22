@@ -82,23 +82,42 @@ class AudioConfig:
     vibration_speed_blend_low_mps: float = 20.0
     vibration_speed_blend_high_mps: float = 50.0
     # Noise band edges, in Hz. The low band plays at all speeds; the high band
-    # fades in with pace. Defaults are the values these were fixed at before
-    # they became configurable, so an untouched rig is unchanged.
-    vibration_low_band_lo_hz: float = 44.0
-    vibration_low_band_hi_hz: float = 50.0
-    vibration_high_band_lo_hz: float = 60.0
-    vibration_high_band_hi_hz: float = 80.0
+    # fades in with pace, so the two have to stay far enough apart in character
+    # for that blend to read as anything.
+    #
+    # These were 44-50 and 60-80, inherited from the values they were fixed at
+    # before becoming configurable. The 2026-09-21 frequency sweep showed that
+    # was a bad place to sit: this rig's front/rear isolation varies by 15.7 dB
+    # across the band, and 60-80 Hz averaged -2.7 dB while straddling the worst
+    # point in the whole sweep (+1.6 dB at 75.6 Hz, where the rear shaker
+    # reaches the front pod louder than its own). Anything routed there was
+    # arriving at both ends of the rig at once — worse than mono, since it also
+    # cost the amplifier power to do it.
+    #
+    # The two well-isolated windows measured were 28-36 Hz (-11.9 dB) and
+    # 44-50 Hz (-14.1 dB), so both bands move down about two thirds of an
+    # octave, which keeps the same spacing between them. The cost is output:
+    # the rig is roughly 9 dB less efficient at 47 Hz than at 67 Hz, so expect
+    # to want more gain than before.
+    vibration_low_band_lo_hz: float = 28.0
+    vibration_low_band_hi_hz: float = 36.0
+    vibration_high_band_lo_hz: float = 44.0
+    vibration_high_band_hi_hz: float = 50.0
     # The rear voice may use different bands. Deliberately a fiction — a real
     # road puts no particular frequency under either axle — bought because a
     # stiff frame couples the two ends together whatever the mixer intends, and
     # below about 100 Hz a body tells things apart by character far better than
-    # by position. Measured -4.2 dB of isolation on this rig, so location alone
-    # carries very little. Defaults match the front, so this costs nothing until
-    # moved, and it only applies on a two-channel rig.
-    vibration_rear_low_band_lo_hz: float = 44.0
-    vibration_rear_low_band_hi_hz: float = 50.0
-    vibration_rear_high_band_lo_hz: float = 60.0
-    vibration_rear_high_band_hi_hz: float = 80.0
+    # by position.
+    #
+    # Defaults match the front, and the sweep says to leave them matched for
+    # now: both directions of leakage are worst and best at the same
+    # frequencies, so there is no second well-isolated window to give the rear
+    # voice of its own. Separating them buys character, not isolation, and that
+    # is a judgement to make by feel rather than from this measurement.
+    vibration_rear_low_band_lo_hz: float = 28.0
+    vibration_rear_low_band_hi_hz: float = 36.0
+    vibration_rear_high_band_lo_hz: float = 44.0
+    vibration_rear_high_band_hi_hz: float = 50.0
     # Engine rumble: continuous sine derived from RPM, amplitude from throttle.
     # rpm_divisor maps RPM to Hz (e.g., 60 → 100 Hz at 6000 RPM).
     engine_rumble_enabled: bool = True

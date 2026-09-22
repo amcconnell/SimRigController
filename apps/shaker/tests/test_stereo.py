@@ -377,12 +377,21 @@ def _centroid_hz(x: np.ndarray, sr: int = 48000) -> float:
 
 
 def test_default_bands_leave_the_two_voices_sharing_one_buffer() -> None:
-    """Untouched, this must be exactly the build that had no band settings."""
+    """Matched bands must cost one noise buffer, not two.
+
+    This used to pin the literal 44-50, on the reasoning that an untouched rig
+    should be exactly the build that had no band settings. The defaults have
+    since moved onto frequencies the rig was measured to isolate well, so the
+    literal only recorded where they happened to start. What is worth
+    protecting is the sharing: identical bands are the common case, and
+    allocating a second buffer for them would waste the memory and the work on
+    every block for no audible difference.
+    """
     out = AudioOutput(AudioBus(_stereo_cfg()))
     assert out._vibration._noise_low is out._vibration_rear._noise_low
     assert out._vibration._noise_high is out._vibration_rear._noise_high
-    assert out._vibration.low_band == (44.0, 50.0)
-    assert out._vibration_rear.low_band == (44.0, 50.0)
+    assert out._vibration.low_band == out._vibration_rear.low_band
+    assert out._vibration.high_band == out._vibration_rear.high_band
 
 
 def test_per_channel_bands_move_each_channel_independently() -> None:
