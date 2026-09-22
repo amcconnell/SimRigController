@@ -458,3 +458,32 @@ def test_a_band_below_what_a_shaker_renders_is_lifted() -> None:
                                            vibration_low_band_hi_hz=3.0)))
     lo, hi = out._vibration.low_band
     assert lo >= 15.0 and hi > lo, (lo, hi)
+
+
+def test_band_edges_require_a_restart_because_the_noise_is_baked() -> None:
+    """A band change the rig ignores must not be reported as applied.
+
+    Each voice generates its bandpass noise once, at construction, so pushing
+    a new band edge into a running bus changes the stored config and nothing
+    audible. This pins both halves of that: the staleness is real, and the
+    config layer knows to restart rather than claim success.
+    """
+    from shaker.config import RESTART_REQUIRED_FIELDS
+
+    bus = AudioBus(_stereo_cfg())
+    out = AudioOutput(bus)
+    before = out._vibration.low_band
+
+    bus.update_audio_config(
+        _stereo_cfg(vibration_low_band_lo_hz=70.0, vibration_low_band_hi_hz=90.0)
+    )
+    assert out._vibration.low_band == before, (
+        "the voice picked up a new band live; if that is now true, these fields "
+        "should come back out of RESTART_REQUIRED_FIELDS"
+    )
+
+    for edge in ("low_lo", "low_hi", "high_lo", "high_hi"):
+        lo_hi, which = edge.split("_")
+        for channel in ("", "rear_"):
+            field = f"audio.vibration_{channel}{lo_hi}_band_{which}_hz"
+            assert field in RESTART_REQUIRED_FIELDS, field

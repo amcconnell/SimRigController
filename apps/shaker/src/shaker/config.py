@@ -251,6 +251,21 @@ RESTART_REQUIRED_FIELDS: frozenset[str] = frozenset({
     "sensors.rear_address",
     "sensors.sample_rate_hz",
     "sensors.range_g",
+    # Each vibration voice generates its bandpass noise buffer once, when it is
+    # constructed, so a band edge changed under a running stream is read by
+    # nothing. Without these entries the API returns 200, the config file and
+    # the profile both record the new numbers, and the rig keeps playing the
+    # old band — the same silent class of failure as a profile activation that
+    # quietly dropped the sensors section. Restarting is cheap and the app
+    # bounces itself; being lied to about what the rig is playing is not.
+    "audio.vibration_low_band_lo_hz",
+    "audio.vibration_low_band_hi_hz",
+    "audio.vibration_high_band_lo_hz",
+    "audio.vibration_high_band_hi_hz",
+    "audio.vibration_rear_low_band_lo_hz",
+    "audio.vibration_rear_low_band_hi_hz",
+    "audio.vibration_rear_high_band_lo_hz",
+    "audio.vibration_rear_high_band_hi_hz",
 })
 
 
