@@ -14,7 +14,7 @@ const MUTED = "#71717a";     // zinc-500
 const ISOLATION = "#34d399"; // emerald-400
 const FRONT = "#60a5fa";     // blue-400
 const REAR = "#f472b6";      // pink-400
-const RESONANCE = "#fbbf24"; // amber-400
+const WORST = "#fbbf24";     // amber-400
 
 const TICKS = [15, 20, 25, 30, 40, 50, 60, 80, 100, 120];
 
@@ -81,10 +81,10 @@ function path(
   return d.trim();
 }
 
-function Chart({ curve, resonanceHz, crossoverHz }: {
+function Chart({ curve, worstHz, bestHz }: {
   curve: SweepCurvePoint[];
-  resonanceHz?: number;
-  crossoverHz?: number;
+  worstHz?: number;
+  bestHz?: number;
 }) {
   const scale = makeScale(curve);
   if (!scale) return null;
@@ -116,19 +116,23 @@ function Chart({ curve, resonanceHz, crossoverHz }: {
         Hz
       </text>
 
-      {resonanceHz !== undefined && (
+      {worstHz !== undefined && (
         <g>
-          <line x1={scale.x(resonanceHz)} x2={scale.x(resonanceHz)}
+          <line x1={scale.x(worstHz)} x2={scale.x(worstHz)}
                 y1={PAD.top} y2={H - PAD.bottom}
-                stroke={RESONANCE} strokeWidth={1} strokeDasharray="4 3" />
-          <text x={scale.x(resonanceHz) + 4} y={PAD.top + 10}
-                fontSize="9" fill={RESONANCE}>fn</text>
+                stroke={WORST} strokeWidth={1} strokeDasharray="4 3" />
+          <text x={scale.x(worstHz) + 4} y={PAD.top + 10}
+                fontSize="9" fill={WORST}>worst</text>
         </g>
       )}
-      {crossoverHz !== undefined && crossoverHz <= scale.hiHz && (
-        <line x1={scale.x(crossoverHz)} x2={scale.x(crossoverHz)}
-              y1={PAD.top} y2={H - PAD.bottom}
-              stroke={ISOLATION} strokeWidth={1} strokeDasharray="2 4" />
+      {bestHz !== undefined && (
+        <g>
+          <line x1={scale.x(bestHz)} x2={scale.x(bestHz)}
+                y1={PAD.top} y2={H - PAD.bottom}
+                stroke={ISOLATION} strokeWidth={1} strokeDasharray="2 4" />
+          <text x={scale.x(bestHz) + 4} y={PAD.top + 10}
+                fontSize="9" fill={ISOLATION}>best</text>
+        </g>
       )}
 
       <path d={path(curve, scale, (c) => c.front_to_rear_db)} fill="none"
@@ -266,21 +270,20 @@ export function SweepPanel({ sensors, onError }: SweepPanelProps) {
       {result && result.ok && summary && (
         <>
           <div className="mb-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
-            <Stat label="Resonance" value={summary.resonance_hz !== undefined
-              ? `${summary.resonance_hz} Hz` : "—"}
-              hint="worst isolation — the mounts' natural frequency" />
-            <Stat label="Isolates above" value={summary.crossover_hz_estimate !== undefined
-              ? `~${summary.crossover_hz_estimate} Hz` : "—"}
-              hint="√2 × resonance; estimated from the peak, not measured" />
             <Stat label="Best" value={summary.best_hz !== undefined
               ? `${db(summary.best_isolation_db)} dB @ ${summary.best_hz} Hz` : "—"}
               hint="where the two channels stay furthest apart" />
-            <Stat label="At resonance" value={db(summary.resonance_isolation_db) + " dB"}
-              hint="how much crossover at the worst frequency" />
+            <Stat label="Worst" value={summary.worst_hz !== undefined
+              ? `${db(summary.worst_isolation_db)} dB @ ${summary.worst_hz} Hz` : "—"}
+              hint="a structural mode, not a property of the mounts" />
+            <Stat label="Spread" value={summary.spread_db !== undefined
+              ? `${summary.spread_db.toFixed(1)} dB` : "—"}
+              hint="how much the band you choose is worth" />
+            <Stat label="Usable" value={`${summary.usable_points} of ${summary.measured_points}`}
+              hint="points that beat the noise floor at both ends" />
           </div>
 
-          <Chart curve={curve} resonanceHz={summary.resonance_hz}
-                 crossoverHz={summary.crossover_hz_estimate} />
+          <Chart curve={curve} worstHz={summary.worst_hz} bestHz={summary.best_hz} />
 
           <div className="mt-2 flex flex-wrap gap-3 text-xs text-zinc-500">
             <Key color={ISOLATION} label="isolation (mean)" />
@@ -294,9 +297,9 @@ export function SweepPanel({ sensors, onError }: SweepPanelProps) {
           ))}
 
           <p className="mt-3 text-xs leading-relaxed text-zinc-500">
-            Lower is better: it is how much of one shaker arrives at the other end. The peak
-            is where the mounts amplify rather than isolate, and useful output belongs above
-            the dotted line, not below it.
+            Lower is better: it is how much of one shaker arrives at the other end. Put the
+            output bands where the line is lowest — on a rig whose isolation varies this much
+            with frequency, that choice is worth more than most mechanical work.
           </p>
 
           <button

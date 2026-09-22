@@ -331,7 +331,7 @@ def test_the_sweep_finds_a_known_resonance() -> None:
         hub.stop()
 
     assert result.ok, result.reason
-    assert result.summary["resonance_hz"] == pytest.approx(25.0, abs=0.01), result.summary
+    assert result.summary["worst_hz"] == pytest.approx(25.0, abs=0.01), result.summary
     # Above resonance an isolator isolates; the curve has to show that.
     curve = {c["freq_hz"]: c["isolation_db"] for c in result.summary["curve"]}
     assert curve[90.0] < curve[25.0] - 6.0, curve
@@ -385,7 +385,7 @@ def test_one_missing_direction_leaves_isolation_unreported() -> None:
     assert curve[0]["isolation_db"] is None
 
 
-def test_a_floor_limited_point_is_excluded_from_the_resonance_search() -> None:
+def test_a_floor_limited_point_is_excluded_from_the_worst_case() -> None:
     """Otherwise the noise floor, which rises at low frequency, reads as a peak."""
     points = [
         _pt(20.0, "front", 0.2, 0.19, floor=True), _pt(20.0, "rear", 0.2, 0.19, floor=True),
@@ -394,8 +394,9 @@ def test_a_floor_limited_point_is_excluded_from_the_resonance_search() -> None:
     ]
     curve = isolation_curve(points)
     summary = summarise(points, curve)
-    assert summary["resonance_hz"] == 40.0
+    assert summary["worst_hz"] == 40.0
     assert summary["best_hz"] == 80.0
+    assert summary["spread_db"] == pytest.approx(20.0, abs=0.1)
 
 
 def test_band_isolation_averages_only_inside_the_band() -> None:

@@ -332,13 +332,16 @@ export interface SweepCurvePoint {
 export interface SweepSummary {
   measured_points: number;
   usable_points: number;
-  // Frequency of worst isolation, which for a mount is its natural frequency.
-  resonance_hz?: number;
-  resonance_isolation_db?: number;
+  // Frequency of worst isolation. Not named a resonance: the first real sweep
+  // was jagged with structural modes rather than shaped like an isolator, so
+  // the worst point is a panel doing something, not a mount property.
+  worst_hz?: number;
+  worst_isolation_db?: number;
   best_hz?: number;
   best_isolation_db?: number;
-  // sqrt(2) x the resonance: theory, derived from the measurement, not measured.
-  crossover_hz_estimate?: number;
+  // Best to worst. The number that decides whether choosing output frequencies
+  // is worth more than mechanical work.
+  spread_db?: number;
   front_peak_hz?: number;
   front_peak_g?: number;
   rear_peak_hz?: number;

@@ -190,10 +190,19 @@ def isolation_curve(points: list[SweepPoint]) -> list[dict[str, Any]]:
 def summarise(points: list[SweepPoint], curve: list[dict[str, Any]]) -> dict[str, Any]:
     """Pull the few numbers worth acting on out of the curve.
 
-    The resonance is read as the frequency of *worst* isolation. For a mount
-    that is the peak of its transmissibility curve, which is its natural
-    frequency by definition — the one number the whole sweep exists to measure,
-    and the one that has so far only ever been inferred.
+    This reports the best and worst frequencies and how far apart they are, and
+    deliberately stops there. An earlier version called the worst frequency the
+    mounts' natural frequency, on the reasoning that a mount's transmissibility
+    peaks at resonance. The first real sweep showed why that was wrong: this rig
+    does not produce an isolator curve at all. It swings 15 dB between adjacent
+    sixth-octave points, structural modes dominate everywhere above 50 Hz, and
+    the worst point landed at 75.6 Hz — which is a panel doing something, not
+    four rubber mounts. Naming it fn would have dressed an artifact up as a
+    measured property of the hardware.
+
+    The spread is the number that turned out to matter. A rig whose isolation
+    varies by 15 dB across the band is one where the choice of output frequency
+    is worth more than any amount of mechanical work.
     """
     usable = [c for c in curve if c["isolation_db"] is not None and not c["floor_limited"]]
     out: dict[str, Any] = {
@@ -203,14 +212,11 @@ def summarise(points: list[SweepPoint], curve: list[dict[str, Any]]) -> dict[str
     if usable:
         worst = max(usable, key=lambda c: c["isolation_db"])
         best = min(usable, key=lambda c: c["isolation_db"])
-        out["resonance_hz"] = worst["freq_hz"]
-        out["resonance_isolation_db"] = worst["isolation_db"]
+        out["worst_hz"] = worst["freq_hz"]
+        out["worst_isolation_db"] = worst["isolation_db"]
         out["best_hz"] = best["freq_hz"]
         out["best_isolation_db"] = best["isolation_db"]
-        # Above sqrt(2) times the natural frequency an isolator starts to
-        # isolate rather than amplify. Derived from the measured peak, not
-        # measured itself, so it is labelled as an estimate wherever it is shown.
-        out["crossover_hz_estimate"] = round(worst["freq_hz"] * math.sqrt(2.0), 1)
+        out["spread_db"] = round(worst["isolation_db"] - best["isolation_db"], 1)
 
     # Where each end rings loudest when driven by its own shaker. These are
     # structural modes, and they are what makes one frequency feel boomy.
