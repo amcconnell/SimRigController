@@ -22,6 +22,7 @@ from shaker.profiles import DEFAULT_PROFILE_NAME
 from shaker.recording import SessionRecorder, list_sessions
 from shaker.sensors import calibration as calibration_mod
 from shaker.sensors import crosstalk as crosstalk_mod
+from shaker.sensors import sweep as sweep_mod
 from shaker.sensors.pods import SensorHub
 from shaker.system import SystemStats
 
@@ -183,6 +184,26 @@ def create_app(
         if updates:
             save_config(cfg_mod.merge(get_config(), {"sensors": updates}))
         return run.as_dict()
+
+    sweep_task = sweep_mod.SweepTask()
+
+    @app.post("/api/sensors/sweep")
+    async def start_sweep() -> dict[str, Any]:
+        """Begin a swept-frequency measurement. Returns at once; poll for progress.
+
+        A sweep takes about a minute, which is far too long to hold a request
+        open — and the person being measured is sitting still throughout, so
+        they need to see it moving.
+        """
+        if sensors is None:
+            raise HTTPException(status_code=503, detail="sensors unavailable")
+        if not sweep_task.start(bus, sensors):
+            raise HTTPException(status_code=409, detail="a sweep is already running")
+        return sweep_task.status()
+
+    @app.get("/api/sensors/sweep")
+    def read_sweep() -> dict[str, Any]:
+        return sweep_task.status()
 
     @app.post("/api/sensors/crosstalk")
     async def measure_crosstalk() -> dict[str, Any]:

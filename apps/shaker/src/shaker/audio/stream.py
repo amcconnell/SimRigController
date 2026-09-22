@@ -130,6 +130,9 @@ class AudioOutput:
         self._wiring_phase = 0.0
         self._wiring_seen = 0
         self._wiring_frames = -1
+        self._tone_phase = 0.0
+        self._tone_seen = 0
+        self._tone_frames = -1
         # Cached drivetrain lookup. The car only changes between sessions, so
         # resolving it once per car keeps a dict lookup off the audio path.
         self._routed_car: int | None = -1  # -1 = nothing resolved yet
@@ -227,6 +230,16 @@ class AudioOutput:
             # The wiring pulse bypasses the limiter by design. Publishing "no
             # reduction" lets the readout decay instead of freezing mid-check
             # on whatever the mix happened to be doing beforehand.
+            self._publish_limiter(frames / self._sample_rate, 1.0)
+            return
+
+        # Measurement tone, same contract. Checked after the wiring pulse so a
+        # check started by hand is never cut short by a sweep running behind it.
+        if self._bus.tone_count != self._tone_seen:
+            self._tone_seen = self._bus.tone_count
+            self._tone_frames = 0
+            self._tone_phase = 0.0
+        if self._tone_frames >= 0 and self._render_tone(outdata, frames):
             self._publish_limiter(frames / self._sample_rate, 1.0)
             return
 
@@ -532,6 +545,58 @@ class AudioOutput:
             ha = _alpha(block_s, _LIMIT_HOLD_TAU_S)
             self._limit_hold = ha + (1.0 - ha) * self._limit_hold
         self._bus.limit_hold = self._limit_hold
+
+    def _render_tone(self, outdata, frames: int) -> bool:  # type: ignore[no-untyped-def]
+        """A single sine on one channel, for the swept measurement.
+
+        Amplitude is held constant across the sweep rather than equalised for
+        what the shaker can do, because the point is to measure the rig's
+        response and pre-compensating the drive would hide exactly the peaks
+        and dips being looked for. Low frequencies will come back quiet; that
+        is a result, not a fault.
+
+        Returns False once the tone is spent, so the caller falls through to
+        the normal mix.
+        """
+        seconds = max(self._bus.tone_s, 1e-3)
+        elapsed = self._tone_frames / self._sample_rate
+        if elapsed >= seconds:
+            self._tone_frames = -1
+            return False
+
+        self._tone_frames += frames
+        outdata[:] = 0.0
+        self._bus.meter_front = 0.0
+        self._bus.meter_rear = 0.0
+        channel = self._bus.tone_channel
+        if self._bus.muted or channel < 0 or channel >= outdata.shape[1]:
+            return True
+
+        idx = np.arange(frames, dtype=np.float32)
+        omega = 2.0 * np.pi * max(self._bus.tone_freq_hz, 0.0) / self._sample_rate
+        tone = np.sin(self._tone_phase + omega * idx).astype(np.float32)
+        self._tone_phase = float((self._tone_phase + omega * frames) % (2.0 * np.pi))
+
+        # Same raised-cosine edges as the wiring pulse. A hard start injects a
+        # click whose energy is spread across every frequency, which is precisely
+        # what a narrowband detector at a nearby frequency would pick up and
+        # report as a response.
+        edge = min(0.5, _WIRING_EDGE_S / seconds)
+        pos = (elapsed + idx / self._sample_rate) / seconds
+        env = np.ones(frames, dtype=np.float32)
+        if edge > 0:
+            ramp = np.minimum(np.clip(pos / edge, 0.0, 1.0),
+                              np.clip((1.0 - pos) / edge, 0.0, 1.0))
+            env = (0.5 - 0.5 * np.cos(np.pi * ramp)).astype(np.float32)
+
+        signal = tone * env * self._bus.tone_amplitude
+        outdata[:, channel] = signal
+        level = float(np.max(np.abs(signal)))
+        if channel == 0:
+            self._bus.meter_front = level
+        else:
+            self._bus.meter_rear = level
+        return True
 
     def _render_wiring(self, outdata, frames: int) -> bool:  # type: ignore[no-untyped-def]
         """One channel at a time, bypassing the mix entirely.

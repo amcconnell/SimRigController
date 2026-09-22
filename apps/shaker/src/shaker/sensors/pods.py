@@ -67,6 +67,13 @@ _PEAK_TAU_S = 1.2
 # noise floor, so it reads a true zero at rest rather than a restless 0.003 g.
 _QUIET_G = 0.01
 
+# Ceiling on a capture buffer, in samples — about five seconds at 800 Hz. Any
+# measurement window is far shorter, so this only ever bites when a capture is
+# left open by a measurement that failed partway through. Bounded on purpose:
+# the integration window had precisely that bug, an accumulator that grew for
+# as long as the process lived because nothing closed it.
+_CAPTURE_MAX = 4096
+
 
 def _alpha(dt_s: float, tau_s: float) -> float:
     return 1.0 - math.exp(-dt_s / tau_s)
@@ -133,6 +140,11 @@ class Pod:
         self._win_sumsq = 0.0
         self._win_n = 0
         self._win_open = False
+        # Raw AC samples for narrowband analysis — see begin_capture.
+        self._cap_x: list[float] = []
+        self._cap_y: list[float] = []
+        self._cap_z: list[float] = []
+        self._cap_open = False
         self._primed = False
         self.stats = PodStats()
 
@@ -168,6 +180,8 @@ class Pod:
         self._ms = 0.0
         self._peak = 0.0
         self._count_since = 0
+        self._cap_open = False
+        self._cap_x, self._cap_y, self._cap_z = [], [], []
         self.stats = PodStats(present=present, error=error)
 
     def poll(self, dt_s: float) -> None:
@@ -211,6 +225,11 @@ class Pod:
         # the loop stays branch-free and nothing accumulates when it is not.
         batch_sumsq = 0.0
         k = self.scale
+        # Resolved once per batch rather than per sample. Overshooting the cap
+        # by one batch is 16 samples and costs nothing; a length check on every
+        # sample would sit in the hottest loop in the process.
+        cap = self._cap_open and len(self._cap_x) < _CAPTURE_MAX
+        cx, cy, cz = self._cap_x, self._cap_y, self._cap_z
         for sample in samples:
             sx, sy, sz = sample.x * k, sample.y * k, sample.z * k
             gx += ga * (sx - gx)
@@ -223,6 +242,10 @@ class Pod:
             if mag > peak:
                 peak = mag
             batch_sumsq += mag2
+            if cap:
+                cx.append(ax)
+                cy.append(ay)
+                cz.append(az)
 
         last = samples[-1]
         s.x, s.y, s.z = last.x * k, last.y * k, last.z * k
@@ -294,6 +317,33 @@ class Pod:
         if n <= 0:
             return (0.0, 0)
         return (math.sqrt(sumsq / n), n)
+
+    def begin_capture(self) -> None:
+        """Start keeping the raw AC samples, not just their energy.
+
+        Separate from begin_window because they answer different questions and
+        cost different amounts. The window keeps three floats and suits a live
+        meter; a capture keeps every sample so a detector can ask what was
+        happening at one specific frequency, which is the only way to measure a
+        shaker that is quieter than the room it is in.
+        """
+        self._cap_x, self._cap_y, self._cap_z = [], [], []
+        self._cap_open = True
+
+    def end_capture(self) -> tuple[list[float], list[float], list[float], float]:
+        """Close the capture and return (x, y, z, the rate they arrived at).
+
+        The rate is the pod's own measured figure rather than the configured
+        one. The ADXL runs from an internal oscillator that lands a couple of
+        percent off nominal and drifts with temperature, and every frequency
+        the caller derives from these samples inherits that error.
+        """
+        self._cap_open = False
+        x, y, z = self._cap_x, self._cap_y, self._cap_z
+        # Consume, for the same reason end_window does: handing a caller the
+        # previous measurement's samples would look exactly like a fresh one.
+        self._cap_x, self._cap_y, self._cap_z = [], [], []
+        return (x, y, z, self.stats.rate_hz or self._rate_hz)
 
     def status(self) -> dict[str, Any]:
         s = self.stats
