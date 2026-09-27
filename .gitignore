@@ -40,3 +40,12 @@ apps/shaker/config/profiles.json
 # FreeCAD backups
 *.FCBak
 *.FCStd1
+
+# KiCad — keep the design, drop the editor's scratch
+*.kicad_prl
+*-backups/
+*.kicad_sch-bak
+*.kicad_pcb-bak
+\#auto_saved_files\#
+*.lck
+fp-info-cache
