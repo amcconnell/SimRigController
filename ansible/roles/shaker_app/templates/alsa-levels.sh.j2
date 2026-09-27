@@ -21,6 +21,10 @@ set -u
 _ATTEMPTS=12
 _DELAY=0.25
 
+# Set when a card is actually configured, so the rebind at the end only fires
+# for a card this rig cares about rather than any USB audio device plugged in.
+_matched=0
+
 {% for c in simrig_alsa_levels %}
 n=0
 while [ "$n" -lt "$_ATTEMPTS" ]; do
@@ -31,6 +35,7 @@ while [ "$n" -lt "$_ATTEMPTS" ]; do
     if [ -n "${card:-}" ] \
        && amixer -c "$card" sset '{{ c.control }}' '{{ c.value }}' >/dev/null 2>&1; then
         echo "set card $card '{{ c.control }}' to {{ c.value }} (matched '{{ c.card_match }}')"
+        _matched=1
         break
     fi
     if [ "$n" -ge "$_ATTEMPTS" ]; then
@@ -44,5 +49,35 @@ while [ "$n" -lt "$_ATTEMPTS" ]; do
     sleep "$_DELAY"
 done
 {% endfor %}
+
+# Rebind the app to a card that appeared after it started.
+#
+# The audio stream is opened once, at startup. A DAC that enumerates even a
+# second late leaves the app bound to whatever else it found — on this rig the
+# Pi's own headphone jack — and it stays there. It logs the fallback and then
+# behaves perfectly normally, so the rig reports healthy, the meters move, and
+# nothing reaches the amplifier. That cost a day: the DAC enumerated twelve
+# minutes after boot during some hardware work, and the fault presented as
+# "the controller isn't running".
+#
+# Guarded on the app already running, for two reasons. At boot this script is
+# ordered Before= the app, so there is nothing to restart and a restart would
+# only undo the ordering that exists to get levels set first. And a restart
+# queued at boot would land just after the app started, making every boot look
+# like a crash loop.
+#
+# --no-block is not optional. This unit is ordered before the app, so a
+# blocking restart would have systemd waiting on a job that waits on this
+# script: a textbook deadlock, and one that only shows up on the hot-plug path
+# where it is hardest to notice.
+#
+# Restarting is heavier than reopening the device would be — it drops the GT7
+# session for a second or two and ends any recording in progress. Worth it:
+# the alternative is silence that looks like health.
+if [ "$_matched" -eq 1 ] \
+   && systemctl is-active --quiet {{ simrig_service_name }}.service; then
+    echo "sound card appeared while {{ simrig_service_name }} was running — rebinding"
+    systemctl --no-block try-restart {{ simrig_service_name }}.service || true
+fi
 
 exit 0

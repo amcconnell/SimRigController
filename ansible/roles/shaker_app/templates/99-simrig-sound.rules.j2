@@ -1,5 +1,10 @@
-# Re-apply output mixer levels whenever a USB sound card appears.
-# Managed by Ansible — edit the shaker_app role, not this file.
+# Re-apply output mixer levels — and rebind the app — whenever a USB sound
+# card appears. Managed by Ansible — edit the shaker_app role, not this file.
+#
+# The rebind lives at the end of alsa-levels.sh rather than in a second unit,
+# so it is ordered after the levels by construction. Without it, a DAC that
+# enumerates after the app starts leaves the app on whatever device it found
+# first, reporting healthy and playing into nothing.
 #
 # simrig-alsa.service is ordered before the shaker at boot, which covers a Pi
 # that starts with its DAC already plugged in. It does not cover swapping the
