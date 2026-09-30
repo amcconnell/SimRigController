@@ -2484,7 +2484,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "LED_THT:LED_D3.0mm_Horizontal_O1.27mm_Z10.0mm"
 			(at 88.9 110.49 0)
 			(hide yes)
 			(show_name no)
@@ -2575,7 +2575,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Connector_RJ:RJ45_Amphenol_54602-x08_Horizontal"
 			(at 55.88 94.615 90)
 			(hide yes)
 			(show_name no)
@@ -2754,7 +2754,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal"
 			(at 49.022 123.19 90)
 			(hide yes)
 			(show_name no)
@@ -2836,7 +2836,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal"
 			(at 57.912 123.19 90)
 			(hide yes)
 			(show_name no)
@@ -3073,7 +3073,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Connector_RJ:RJ45_Amphenol_54602-x08_Horizontal"
 			(at 54.61 62.865 90)
 			(hide yes)
 			(show_name no)
@@ -3252,7 +3252,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal"
 			(at 90.678 102.87 90)
 			(hide yes)
 			(show_name no)
@@ -3332,7 +3332,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Connector_PinSocket_2.54mm:PinSocket_2x20_P2.54mm_Vertical"
 			(at 192.024 123.698 0)
 			(hide yes)
 			(show_name no)
