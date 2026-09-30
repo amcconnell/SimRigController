@@ -49,3 +49,6 @@ apps/shaker/config/profiles.json
 \#auto_saved_files\#
 *.lck
 fp-info-cache
+
+# Editor local history
+.history/
