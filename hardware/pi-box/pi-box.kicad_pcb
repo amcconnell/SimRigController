@@ -2088,6 +2088,7 @@
 		(property "Value" "Raspberry_Pi_4"
 			(at -1.27 -51.03 90)
 			(layer "B.Fab")
+			(hide yes)
 			(uuid "ad3a8551-88fd-4abc-9a93-105c6a8e6f4c")
 			(effects
 				(font
@@ -2785,26 +2786,6 @@
 		)
 	)
 	(gr_line
-		(start 24 49)
-		(end 24 48.5)
-		(stroke
-			(width 0.1)
-			(type solid)
-		)
-		(layer "Dwgs.User")
-		(uuid "1bb42a28-447b-417f-a919-36e06e4818cf")
-	)
-	(gr_line
-		(start 24 65)
-		(end 24 83)
-		(stroke
-			(width 0.1)
-			(type solid)
-		)
-		(layer "Dwgs.User")
-		(uuid "72f711ec-fbd3-4c55-b70a-fcff3198cd08")
-	)
-	(gr_line
 		(start 89 49)
 		(end 89 48.5)
 		(stroke
@@ -2852,13 +2833,13 @@
 	)
 	(gr_line
 		(start 24 49)
-		(end 24 65)
+		(end 24 99)
 		(stroke
-			(width 0.1)
-			(type solid)
+			(width 0.05)
+			(type default)
 		)
 		(layer "Edge.Cuts")
-		(uuid "4811403a-f9b3-47ae-a588-c691e88cc8a7")
+		(uuid "bf831057-d102-40f2-b4a8-53b71108f0f7")
 	)
 	(gr_arc
 		(start 24 49)
@@ -2870,16 +2851,6 @@
 		)
 		(layer "Edge.Cuts")
 		(uuid "f7eba59a-2ed3-46b7-8e6a-27c897dd82af")
-	)
-	(gr_line
-		(start 24 83)
-		(end 24 99)
-		(stroke
-			(width 0.1)
-			(type solid)
-		)
-		(layer "Edge.Cuts")
-		(uuid "acfcf64f-c5bc-4b12-b840-047420880ff1")
 	)
 	(gr_arc
 		(start 27 102)
@@ -2944,17 +2915,6 @@
 		(layer "Edge.Cuts")
 		(uuid "b07df4cc-6a89-4603-8f1b-474f2226f6f7")
 	)
-	(gr_text "PoE"
-		(at 85.5 55.64 0)
-		(layer "Dwgs.User")
-		(uuid "a6b15269-fff4-4d09-823b-efb5340dc280")
-		(effects
-			(font
-				(size 1 1)
-				(thickness 0.15)
-			)
-		)
-	)
 	(gr_text "RJ45"
 		(at 100.2 91.84 0)
 		(layer "Dwgs.User")
@@ -2985,37 +2945,6 @@
 			(font
 				(size 2 2)
 				(thickness 0.15)
-			)
-		)
-	)
-	(zone
-		(layer "B.Cu")
-		(uuid "cb6ab2ca-b26e-469f-8f7f-efd065d0b256")
-		(name "PoE")
-		(hatch full 0.508)
-		(connect_pads
-			(clearance 0)
-		)
-		(min_thickness 0.254)
-		(keepout
-			(tracks allowed)
-			(vias allowed)
-			(pads allowed)
-			(copperpour allowed)
-			(footprints not_allowed)
-		)
-		(placement
-			(enabled no)
-			(sheetname "")
-		)
-		(fill
-			(thermal_gap 0.508)
-			(thermal_bridge_width 0.508)
-			(island_removal_mode 0)
-		)
-		(polygon
-			(pts
-				(xy 88 58.14) (xy 83 58.14) (xy 83 53.14) (xy 88 53.14)
 			)
 		)
 	)
