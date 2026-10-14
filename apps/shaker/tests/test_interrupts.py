@@ -74,8 +74,8 @@ def test_an_out_of_range_watermark_is_refused(bad: int) -> None:
 # --- the watcher -----------------------------------------------------------
 
 
-def test_no_gpio_library_is_a_state_not_a_failure() -> None:
-    """Developed on a Mac. The watcher reports itself absent and nothing breaks."""
+def test_no_gpio_device_is_a_state_not_a_failure() -> None:
+    """Developed on a Mac: the library imports fine, /dev/gpiochip0 does not exist."""
     w = EdgeWatcher([4, 17], threading.Event())
     w.start()
     s = w.status()
@@ -91,12 +91,30 @@ def test_no_pins_configured_is_also_a_state() -> None:
     w.stop()
 
 
-def test_an_edge_sets_the_event() -> None:
+class FakeReadyLine:
+    def __init__(self) -> None:
+        self.consumed = 0
+
+    def read_event(self) -> None:
+        self.consumed += 1
+
+
+def test_an_edge_sets_the_event_and_is_consumed() -> None:
+    """An unconsumed edge leaves the pin readable forever, so the poll spins."""
     wake = threading.Event()
     w = EdgeWatcher([4], wake)
-    w._on_edge(0, 4, 1, 0)      # what lgpio's callback thread does
+    line = FakeReadyLine()
+    w._handle_ready([line])
     assert wake.is_set()
     assert w.status()["edges"] == 1
+    assert line.consumed == 1, "the event was never read, so it would fire again"
+
+
+def test_no_ready_lines_does_not_wake_anything() -> None:
+    wake = threading.Event()
+    w = EdgeWatcher([4], wake)
+    w._handle_ready([])
+    assert not wake.is_set()
 
 
 # --- the property that matters ---------------------------------------------

@@ -17,6 +17,9 @@ without the watermark, a Pi with no GPIO at all — the timeout fires and
 everything behaves exactly as it did before. A missed interrupt must not be
 able to stall sampling, because the alternative is a rig that silently stops
 measuring and still reports both pods present.
+
+GPIO goes through the character device in pure Python, for the same reason the
+status LED does: no compiler on the appliance. See led.py for why.
 """
 
 from __future__ import annotations
@@ -25,10 +28,13 @@ import logging
 import threading
 from typing import Any
 
+from shaker.led import CHIP_PATHS
+
 log = logging.getLogger(__name__)
 
-# Same chips as the status LED: a Pi 4 puts the header on 0, a Pi 5 on 4.
-_CHIPS = (0, 4)
+# How long a poll blocks before looping. Only bounds how quickly stop() is
+# noticed — an edge wakes the poll immediately regardless.
+_POLL_TIMEOUT_S = 0.5
 
 
 class EdgeWatcher:
@@ -42,9 +48,9 @@ class EdgeWatcher:
     def __init__(self, gpios: list[int], wake: threading.Event) -> None:
         self._gpios = [g for g in gpios if g > 0]
         self._wake = wake
-        self._handle: Any = None
-        self._callbacks: list[Any] = []
-        self._lgpio: Any = None
+        self._lines: list[Any] = []
+        self._thread: threading.Thread | None = None
+        self._stop = threading.Event()
         self.error: str | None = None
         self.edges = 0
 
@@ -53,63 +59,77 @@ class EdgeWatcher:
             self.error = "no interrupt pins configured"
             return
         try:
-            import lgpio
-        except ImportError as exc:
-            self.error = f"lgpio not available: {exc}"
-            log.info("pod interrupts unavailable: %s", self.error)
+            from periphery import GPIO
+        except ImportError as exc:  # pragma: no cover - the package installs anywhere
+            self.error = f"periphery not available: {exc}"
             return
 
-        self._lgpio = lgpio
         last: Exception | None = None
-        for chip in _CHIPS:
-            try:
-                handle = lgpio.gpiochip_open(chip)
-            except Exception as exc:  # noqa: BLE001 - try the next chip
-                last = exc
-                continue
+        for path in CHIP_PATHS:
+            lines = []
             try:
                 for g in self._gpios:
-                    lgpio.gpio_claim_alert(handle, g, lgpio.RISING_EDGE)
-                    self._callbacks.append(
-                        lgpio.callback(handle, g, lgpio.RISING_EDGE, self._on_edge)
-                    )
-                self._handle = handle
-                log.info("pod interrupts on gpiochip%d, pins %s", chip, self._gpios)
-                return
-            except Exception as exc:  # noqa: BLE001 - a claimed pin is not fatal
+                    lines.append(GPIO(path, g, "in", edge="rising"))
+            except Exception as exc:  # noqa: BLE001 - try the next chip
                 last = exc
-                self._release(handle)
-        self.error = f"could not claim {self._gpios} on any of {_CHIPS}: {last}"
+                for line in lines:
+                    try:
+                        line.close()
+                    except Exception:  # noqa: BLE001
+                        pass
+                continue
+            self._lines = lines
+            self._stop.clear()
+            self._thread = threading.Thread(
+                target=self._run, name="pod-interrupts", daemon=True
+            )
+            self._thread.start()
+            log.info("pod interrupts on %s, pins %s", path, self._gpios)
+            return
+        self.error = f"could not claim {self._gpios} on any of {CHIP_PATHS}: {last}"
         log.info("pod interrupts unavailable: %s", self.error)
 
-    def _on_edge(self, chip: int, gpio: int, level: int, timestamp: int) -> None:
-        # Runs on lgpio's thread. Deliberately trivial: setting an Event is the
-        # whole job, and anything heavier here would be doing sensor work on a
-        # callback thread nobody owns.
-        self.edges += 1
-        self._wake.set()
+    def _run(self) -> None:
+        from periphery import GPIO
 
-    def _release(self, handle: Any) -> None:
-        for cb in self._callbacks:
+        while not self._stop.is_set():
             try:
-                cb.cancel()
-            except Exception:  # noqa: BLE001 - teardown must not raise
+                ready = GPIO.poll_multiple(self._lines, _POLL_TIMEOUT_S)[0]
+            except Exception as exc:  # noqa: BLE001 - a dead pin must not kill sampling
+                self.error = str(exc)
+                log.warning("pod interrupt poll failed, falling back to the timer: %s", exc)
+                return
+            self._handle_ready(ready)
+
+    def _handle_ready(self, ready: list[Any]) -> None:
+        """Consume the events and wake the sampler. Split out to be testable
+        without a GPIO: the poll above needs a real character device, this does
+        not, and this is the half with the behaviour worth pinning."""
+        for line in ready:
+            try:
+                line.read_event()   # consume it, or the pin stays readable forever
+            except Exception:  # noqa: BLE001
                 pass
-        self._callbacks = []
-        try:
-            self._lgpio.gpiochip_close(handle)
-        except Exception:  # noqa: BLE001
-            pass
+            self.edges += 1
+        if ready:
+            self._wake.set()
 
     def stop(self) -> None:
-        if self._handle is not None:
-            self._release(self._handle)
-            self._handle = None
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=_POLL_TIMEOUT_S * 3)
+            self._thread = None
+        for line in self._lines:
+            try:
+                line.close()
+            except Exception:  # noqa: BLE001 - teardown must not raise
+                pass
+        self._lines = []
 
     def status(self) -> dict[str, Any]:
         return {
             "gpios": self._gpios,
-            "available": self._handle is not None,
+            "available": bool(self._lines),
             "error": self.error,
             "edges": self.edges,
         }

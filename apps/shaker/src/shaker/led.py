@@ -10,10 +10,18 @@ So it reports health instead, and the pattern that matters is the fast blink —
 reads are failing right now. That is the state that used to be invisible until
 a measurement came back wrong hours later.
 
-Everything here degrades to nothing. The GPIO library only exists on Linux, the
-line only exists on a Pi, and this is developed on a Mac — so absence is a
-state rather than an error, exactly as it is for the pods. A rig with no LED
-fitted behaves identically to one that has it, minus the light.
+Everything here degrades to nothing. The GPIO character device only exists on
+Linux and the pin only exists on a Pi, so absence is a state rather than an
+error, exactly as it is for the pods. A rig with no LED fitted behaves
+identically to one that has it, minus the light.
+
+The GPIO library is pure Python talking to /dev/gpiochip* through ioctl, for
+the same reason smbus2 was chosen for I2C: it installs anywhere, and what fails
+off a Pi is opening the device rather than installing the package. The
+alternative, lgpio, is what Raspberry Pi OS itself ships — but it is distributed
+as source, so every deploy compiled it, and getting that compile to succeed
+wanted Python headers, SWIG and a -dev package for a library the OS already had.
+Three build dependencies on an appliance to rebuild a module it came with.
 """
 
 from __future__ import annotations
@@ -30,6 +38,7 @@ log = logging.getLogger(__name__)
 # answer is a property of the board and not something anyone should have to
 # know to get a light working.
 _CHIPS = (0, 4)
+CHIP_PATHS = tuple(f"/dev/gpiochip{n}" for n in _CHIPS)
 
 # How recently a pod must have failed a read for the LED to call it an error.
 # Long enough that a fault which recurs every few seconds reads as continuous
@@ -65,29 +74,26 @@ class GpioLine(Protocol):
     def close(self) -> None: ...
 
 
-class _LgpioLine:
+class _PeripheryLine:
     def __init__(self, gpio: int) -> None:
-        import lgpio  # imported here: the package only exists on Linux
+        from periphery import GPIO
 
-        self._lgpio = lgpio
-        self._gpio = gpio
         last: Exception | None = None
-        for chip in _CHIPS:
+        for path in CHIP_PATHS:
             try:
-                self._handle = lgpio.gpiochip_open(chip)
-                lgpio.gpio_claim_output(self._handle, gpio, 0)
+                self._line = GPIO(path, gpio, "out")
                 return
             except Exception as exc:  # noqa: BLE001 - any failure means try the next chip
                 last = exc
-        raise LedError(f"no gpiochip in {_CHIPS} would give up GPIO{gpio}: {last}")
+        raise LedError(f"no chip in {CHIP_PATHS} would give up GPIO{gpio}: {last}")
 
     def write(self, value: int) -> None:
-        self._lgpio.gpio_write(self._handle, self._gpio, value)
+        self._line.write(bool(value))
 
     def close(self) -> None:
         try:
-            self._lgpio.gpio_write(self._handle, self._gpio, 0)
-            self._lgpio.gpiochip_close(self._handle)
+            self._line.write(False)
+            self._line.close()
         except Exception:  # noqa: BLE001 - shutdown must not raise
             pass
 
@@ -95,9 +101,7 @@ class _LgpioLine:
 def open_line(gpio: int) -> GpioLine:
     """Claim the pin. Raises LedError anywhere that cannot, which is most places."""
     try:
-        return _LgpioLine(gpio)
-    except ImportError as exc:
-        raise LedError(f"lgpio not available: {exc}") from exc
+        return _PeripheryLine(gpio)
     except LedError:
         raise
     except Exception as exc:  # noqa: BLE001 - a missing pin must not take the app down

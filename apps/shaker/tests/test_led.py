@@ -102,8 +102,8 @@ def test_a_pod_that_never_failed_does_not_read_as_an_old_error() -> None:
 # --- absence is a state ----------------------------------------------------
 
 
-def test_no_gpio_library_is_not_an_error() -> None:
-    """Developed on a Mac, which has no GPIO at all."""
+def test_no_gpio_device_is_not_an_error() -> None:
+    """Developed on a Mac, which has no /dev/gpiochip at all."""
     led = StatusLed(FakeHub([FakePod(), FakePod()]), gpio=27)
     led.start()          # must not raise
     s = led.status()
@@ -120,7 +120,7 @@ def test_disabled_in_config_does_not_claim_a_pin() -> None:
     assert line.writes == []
 
 
-def test_open_line_raises_lederror_rather_than_whatever_lgpio_raises() -> None:
+def test_open_line_raises_lederror_whatever_the_backend_raises() -> None:
     """Callers catch one exception type; the backend's is not part of the contract."""
     with pytest.raises(LedError):
         open_line(27)

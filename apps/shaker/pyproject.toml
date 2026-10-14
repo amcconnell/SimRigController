@@ -13,11 +13,13 @@ dependencies = [
     # I2C for the accelerometer pods. Pure Python and installs anywhere;
     # opening a bus is what fails off a Pi, and that is handled.
     "smbus2>=0.4",
-    # GPIO for the status LED. A C extension against the Linux GPIO character
-    # device, so it is marked Linux-only rather than left to fail the install
-    # on the Mac this is developed on. The code treats its absence as a state,
-    # so a Mac simply has no LED.
-    "lgpio>=0.2 ; sys_platform == 'linux'",
+    # GPIO for the status LED and the pods' interrupt lines. Pure Python over
+    # /dev/gpiochip*, chosen for the same reason as smbus2: it installs
+    # anywhere, and what fails off a Pi is opening the device rather than
+    # installing the package. lgpio — what Raspberry Pi OS itself ships — is
+    # distributed as source, so it wanted Python headers, SWIG and a -dev
+    # package on the appliance to rebuild a module already present.
+    "python-periphery>=2.4",
 ]
 
 [dependency-groups]
