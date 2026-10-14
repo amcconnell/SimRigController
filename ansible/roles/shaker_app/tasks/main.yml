@@ -22,13 +22,13 @@
     shell: /usr/sbin/nologin
     home: "{{ simrig_app_root }}"
     create_home: false
+    state: present
+  check_mode: false  # downstream `become_user` needs this user to exist even in --check
   # Group membership is read once, when the process starts. Without this a
   # deploy that changed only the groups would report success and leave the
   # service running with the old ones — which is how the LED came to report
   # "Permission denied" against a user that, on paper, had the right group.
   notify: Restart shaker service
-    state: present
-  check_mode: false  # downstream `become_user` needs this user to exist even in --check
 
 - name: Ensure app root exists
   # Owned by the SSH user so synchronize can rsync into it without sudo.
