@@ -8,7 +8,7 @@ interface HostPanelProps {
   system: SystemStatus | null | undefined;
 }
 
-/** Temperature, fan, CPU and memory for the Pi itself.
+/** Temperature, CPU and memory for the Pi itself.
  *
  * Here because the failure it warns about is not a crash. A hot Pi reduces its
  * clock, and a throttled Pi misses audio callbacks — which arrives in the seat
@@ -43,14 +43,6 @@ export function HostPanel({ system }: HostPanelProps) {
           tone={tempTone}
         />
         <Reading
-          label="fan"
-          value={s?.fan_duty_pct === null || s?.fan_duty_pct === undefined
-            ? "—" : String(s.fan_duty_pct)}
-          unit="%"
-          fill={bar(s?.fan_duty_pct ?? null)}
-          tone="text-zinc-200"
-        />
-        <Reading
           label="cpu"
           value={s?.cpu_pct === null || s?.cpu_pct === undefined ? "—" : s.cpu_pct.toFixed(0)}
           unit="%"
@@ -77,11 +69,6 @@ export function HostPanel({ system }: HostPanelProps) {
             <span className="font-mono tabular-nums text-zinc-400">
               {s.mem_used_mb} / {s.mem_total_mb} MB
             </span>
-          </span>
-        )}
-        {s?.fan_duty_pct === null && (
-          <span className="text-amber-300">
-            fan unmanaged — on this case that means running flat out
           </span>
         )}
       </div>
