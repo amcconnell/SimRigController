@@ -18,7 +18,15 @@
       - alsa-utils
       - libportaudio2
       # i2cdetect, for confirming a pod answers before blaming the software.
+      # Lands in /usr/sbin, which is not on a non-root PATH — call it by full
+      # path rather than concluding it is missing.
       - i2c-tools
+      # Headers for building C extensions in the venv. The venv is built on the
+      # system interpreter (pyvenv.cfg home = /usr/bin), so lgpio — which ships
+      # as source, not a wheel — compiles against these. Without it uv sync
+      # fails on the Pi while succeeding everywhere a wheel exists, which is a
+      # confusing way to find out.
+      - python3-dev
     state: present
 
 # --- I2C for the accelerometer pods ----------------------------------------
