@@ -146,6 +146,12 @@ class Pod:
         self._cap_z: list[float] = []
         self._cap_open = False
         self._primed = False
+        # When a read or probe last failed, as time.monotonic(). Zero means
+        # never. Kept here rather than derived from stats.present because a
+        # flapping pod is present again within two seconds, so by the time
+        # anything looks it is indistinguishable from one that never failed —
+        # which is exactly the fault that went unnoticed for a week.
+        self.last_error_at: float = 0.0
         self.stats = PodStats()
 
     def attach(self, bus: I2CBus | None) -> None:
@@ -174,6 +180,8 @@ class Pod:
         )
 
     def _reset(self, present: bool, error: str | None) -> None:
+        if error is not None:
+            self.last_error_at = time.monotonic()
         if not present:
             self._dev = None
         self._primed = False

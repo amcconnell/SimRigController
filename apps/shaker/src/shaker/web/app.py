@@ -38,6 +38,7 @@ def create_app(
     bus: AudioBus,
     recorder: SessionRecorder | None = None,
     sensors: SensorHub | None = None,
+    led: Any = None,
 ) -> FastAPI:
     app = FastAPI(title="SimRig Shaker")
     # Owned here rather than passed in: it holds only the previous CPU
@@ -162,6 +163,7 @@ def create_app(
             "limiter": _limiter_diagnostics(bus),
             "recording": recorder.status() if recorder else None,
             "sensors": sensors.status() if sensors else None,
+            "led": led.status() if led else None,
             "system": host.read(),
         }
 

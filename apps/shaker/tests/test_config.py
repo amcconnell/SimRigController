@@ -198,3 +198,24 @@ def test_no_component_declares_a_prop_called_ref() -> None:
         "these declare a prop named `ref`, which React reserves:\n  "
         + "\n  ".join(offenders)
     )
+
+
+def test_every_config_section_survives_a_round_trip() -> None:
+    """A section missing from to_dict is a section dropped from the file.
+
+    save() writes exactly what to_dict returns, so a hand-written list there
+    silently loses any section added later — which is how [sensors] came to be
+    rebuilt from defaults on every profile activation, turning the pods off and
+    discarding their calibration with nothing logged.
+
+    Both directions, because reading has the same failure mode: a section the
+    loader does not know about is a section that reverts to defaults on the
+    next restart.
+    """
+    from shaker.config import _from_dict
+
+    cfg = cfg_mod.Config()
+    as_dict = cfg_mod.to_dict(cfg)
+    for f in fields(cfg_mod.Config):
+        assert f.name in as_dict, f"{f.name} missing from to_dict()"
+    assert _from_dict(as_dict) == cfg

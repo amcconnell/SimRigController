@@ -15,6 +15,7 @@ from shaker.audio.stream import AudioOutput
 from shaker.config import Config
 from shaker.gt7.protocol import TelemetryPacket
 from shaker.gt7.client import GT7Client
+from shaker.led import StatusLed
 from shaker.recording import SessionRecorder
 from shaker.sensors.pods import SensorHub
 from shaker.web.app import create_app
@@ -51,6 +52,11 @@ async def run(config_path: Path = cfg_mod.DEFAULT_CONFIG_PATH) -> int:
         enabled=state.config.sensors.enabled,
         front_scale=state.config.sensors.front_scale,
         rear_scale=state.config.sensors.rear_scale,
+    )
+    led = StatusLed(
+        sensors,
+        gpio=state.config.led.gpio,
+        enabled=state.config.led.enabled,
     )
 
     def on_packet(packet: TelemetryPacket) -> None:
@@ -110,6 +116,7 @@ async def run(config_path: Path = cfg_mod.DEFAULT_CONFIG_PATH) -> int:
             sensors.set_scale("rear", new.sensors.rear_scale)
 
     fastapi_app = create_app(
+        led=led,
         get_config=get_config, save_config=save_config, gt7=gt7, bus=bus,
         recorder=recorder, sensors=sensors,
     )
@@ -125,6 +132,9 @@ async def run(config_path: Path = cfg_mod.DEFAULT_CONFIG_PATH) -> int:
     # Never raises: a missing bus is the normal case on a development Mac and
     # on a Pi before the pods are wired, and is reported through status().
     sensors.start()
+    # After the hub, so the first pattern it computes reflects a hub that has
+    # at least been asked to open its bus.
+    led.start()
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
@@ -156,6 +166,7 @@ async def run(config_path: Path = cfg_mod.DEFAULT_CONFIG_PATH) -> int:
         audio.stop()
         recorder.stop()
         sensors.stop()
+        led.stop()
         server.should_exit = True
 
         # Give workers a brief grace period to shut down naturally. Uvicorn's
