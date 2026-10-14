@@ -30,6 +30,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from shaker.sensors.interrupts import EdgeWatcher
 from shaker.sensors.adxl345 import (
     ADDR_ALT,
     ADDR_PRIMARY,
@@ -41,9 +42,14 @@ from shaker.sensors.adxl345 import (
 
 log = logging.getLogger(__name__)
 
-# How often the thread drains the FIFOs. The FIFO is 32 deep, so at 800 Hz it
-# fills in 40 ms — polling at half that leaves margin for a late thread wake-up
+# Longest the thread will go without draining the FIFOs. The FIFO is 32 deep,
+# so at 800 Hz it fills in 40 ms — half that leaves margin for a late wake-up
 # without dropping samples.
+#
+# A floor rather than the mechanism, now that the pods can raise an interrupt
+# at their watermark. An edge wakes the thread sooner; this is what happens
+# when no edge arrives, which must remain survivable: a broken INT trace should
+# cost latency, not sampling.
 _POLL_S = 0.02
 
 # Retry cadence for a pod that is absent or has faulted. Slow enough that an
@@ -121,9 +127,10 @@ class Pod:
     """One sensor plus the running statistics kept for it."""
 
     def __init__(self, name: str, address: int, rate_hz: float, range_g: int,
-                 scale: float = 1.0) -> None:
+                 scale: float = 1.0, watermark: int | None = None) -> None:
         self.name = name
         self.address = address
+        self.watermark = watermark
         # Sensitivity correction from calibration; 1.0 until measured. Applied
         # to raw samples so tilt, vibration and measurement windows all inherit
         # it rather than each having to remember.
@@ -167,7 +174,9 @@ class Pod:
             self._reset(present=False, error=None)
             return
         try:
-            dev.configure(rate_hz=self._rate_hz, range_g=self._range_g)
+            dev.configure(
+                rate_hz=self._rate_hz, range_g=self._range_g, watermark=self.watermark
+            )
         except SensorError as exc:
             self._reset(present=False, error=str(exc))
             return
@@ -385,17 +394,29 @@ class SensorHub:
     enabled: bool = True
     front_scale: float = 1.0
     rear_scale: float = 1.0
+    # FIFO depth at which a pod asserts INT1. None leaves interrupts off and
+    # the thread purely on its timer, which is how this worked before the
+    # breakout board routed INT1 to a pin.
+    watermark: int | None = None
+    int_front_gpio: int = 0
+    int_rear_gpio: int = 0
 
     _bus: I2CBus | None = field(default=None, init=False)
     _bus_error: str | None = field(default=None, init=False)
     _pods: list[Pod] = field(default_factory=list, init=False)
     _thread: threading.Thread | None = field(default=None, init=False)
     _stop: threading.Event = field(default_factory=threading.Event, init=False)
+    # Set by a pod's interrupt or by stop(); the sampling loop waits on it with
+    # _POLL_S as the timeout, so an edge only ever makes it react sooner.
+    _wake: threading.Event = field(default_factory=threading.Event, init=False)
+    _edges: EdgeWatcher | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         self._pods = [
-            Pod("front", self.front_address, self.rate_hz, self.range_g, self.front_scale),
-            Pod("rear", self.rear_address, self.rate_hz, self.range_g, self.rear_scale),
+            Pod("front", self.front_address, self.rate_hz, self.range_g,
+                self.front_scale, self.watermark),
+            Pod("rear", self.rear_address, self.rate_hz, self.range_g,
+                self.rear_scale, self.watermark),
         ]
 
     def set_scale(self, name: str, scale: float) -> None:
@@ -424,6 +445,8 @@ class SensorHub:
                 log.info("accelerometer pods unavailable: %s", exc)
                 return
         self._stop.clear()
+        self._edges = EdgeWatcher([self.int_front_gpio, self.int_rear_gpio], self._wake)
+        self._edges.start()
         self._thread = threading.Thread(target=self._run, name="sensors", daemon=True)
         self._thread.start()
 
@@ -438,10 +461,16 @@ class SensorHub:
                     pod.attach(self._bus)
                 else:
                     pod.poll(dt)
-            self._stop.wait(_POLL_S)
+            # Woken by a watermark interrupt, or by the timeout if none comes.
+            self._wake.wait(_POLL_S)
+            self._wake.clear()
 
     def stop(self) -> None:
         self._stop.set()
+        self._wake.set()        # so the loop does not sit out a full timeout
+        if self._edges is not None:
+            self._edges.stop()
+            self._edges = None
         if self._thread is not None:
             self._thread.join(timeout=1.0)
             self._thread = None
@@ -454,5 +483,6 @@ class SensorHub:
             "available": self._bus is not None,
             "error": self._bus_error,
             "any_present": any(p["present"] for p in pods),
+            "interrupts": self._edges.status() if self._edges else None,
             "pods": pods,
         }

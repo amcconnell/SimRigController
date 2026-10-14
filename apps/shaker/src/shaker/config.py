@@ -220,6 +220,15 @@ class SensorConfig:
     # wide. 1.0 means uncalibrated. Hot-applied — no restart.
     front_scale: float = 1.0
     rear_scale: float = 1.0
+    # FIFO depth at which a pod raises INT1, and the pins the breakout board
+    # routes those to. 0 for the watermark leaves interrupts off and the
+    # sampling thread purely on its timer, which is how this ran before the
+    # board existed — and remains what happens anyway if an edge never
+    # arrives, since the timer is a floor rather than a fallback of last
+    # resort.
+    int_watermark: int = 16
+    int_front_gpio: int = 4
+    int_rear_gpio: int = 17
 
 
 @dataclass(frozen=True)
@@ -265,6 +274,12 @@ RESTART_REQUIRED_FIELDS: frozenset[str] = frozenset({
     "sensors.rear_address",
     "sensors.sample_rate_hz",
     "sensors.range_g",
+    # The watermark is written to the part when it is configured and the pins
+    # are claimed once at start, both of which happen before anything could
+    # hot-reload them.
+    "sensors.int_watermark",
+    "sensors.int_front_gpio",
+    "sensors.int_rear_gpio",
     # The pin is claimed once, at startup, and held for the life of the
     # process. Changing either of these under a running thread would leave it
     # blinking a line it no longer owns.

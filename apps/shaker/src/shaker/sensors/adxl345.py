@@ -43,6 +43,7 @@ _REG_OFSX = 0x1E
 _REG_BW_RATE = 0x2C
 _REG_POWER_CTL = 0x2D
 _REG_INT_ENABLE = 0x2E
+_REG_INT_MAP = 0x2F
 _REG_DATA_FORMAT = 0x31
 _REG_DATAX0 = 0x32
 _REG_FIFO_CTL = 0x38
@@ -54,6 +55,16 @@ _POWER_MEASURE = 0x08
 _FORMAT_FULL_RES = 0x08
 _FIFO_STREAM = 0x80    # mode bits 7:6 = 0b10
 _FIFO_SAMPLES = 31     # watermark only; stream mode keeps all 32 entries
+
+# Watermark used when the host wants an interrupt instead of a timer. Well
+# below the 31 above, which fires only once the FIFO is effectively full: at
+# 800 Hz that is 39 ms of buffer gone before anyone is told, leaving no margin
+# for a late reader. 16 samples is 20 ms, half the depth, which is the same
+# cadence the poll already ran at and leaves the other half as headroom.
+INT_WATERMARK = 16
+
+_INT_WATERMARK_BIT = 0x02   # INT_ENABLE / INT_MAP bit 1
+_INT_MAP_ALL_INT1 = 0x00    # every enabled source to the INT1 pin
 
 # Full-resolution scale factor, constant across ranges by design.
 _G_PER_LSB = 1.0 / 256.0
@@ -126,10 +137,25 @@ class ADXL345:
         except OSError:
             return False
 
-    def configure(self, rate_hz: float = 800.0, range_g: int = 16) -> None:
+    def configure(
+        self,
+        rate_hz: float = 800.0,
+        range_g: int = 16,
+        watermark: int | None = None,
+    ) -> None:
+        """Set rate, range and FIFO. A watermark also enables its interrupt.
+
+        `watermark` is the FIFO depth at which the part asserts INT1. None
+        leaves interrupts off and the watermark at its stream-mode maximum,
+        which is the timer-driven arrangement this had before the breakout
+        board routed INT1 anywhere.
+        """
         if range_g not in _RANGE_BITS:
             raise ValueError(f"range must be one of {sorted(_RANGE_BITS)}, got {range_g}")
         rate = nearest_rate(rate_hz)
+        if watermark is not None and not 1 <= watermark <= 31:
+            raise ValueError(f"watermark must be 1..31, got {watermark}")
+        samples = _FIFO_SAMPLES if watermark is None else watermark
         try:
             # Standby while reconfiguring — the datasheet only guarantees the
             # format and FIFO registers latch cleanly when not measuring.
@@ -138,17 +164,26 @@ class ADXL345:
             self.bus.write_byte_data(
                 self.address, _REG_DATA_FORMAT, _FORMAT_FULL_RES | _RANGE_BITS[range_g]
             )
+            # Interrupts off while reconfiguring, then re-enabled below — an
+            # enabled source during the FIFO reset would assert INT1 against a
+            # buffer that is about to be thrown away.
             self.bus.write_byte_data(self.address, _REG_INT_ENABLE, 0x00)
             # Bypass first: switching straight into stream leaves whatever was
             # already buffered, so the first poll would return stale samples
             # timestamped as current.
             self.bus.write_byte_data(self.address, _REG_FIFO_CTL, 0x00)
-            self.bus.write_byte_data(self.address, _REG_FIFO_CTL, _FIFO_STREAM | _FIFO_SAMPLES)
+            self.bus.write_byte_data(self.address, _REG_FIFO_CTL, _FIFO_STREAM | samples)
+            if watermark is not None:
+                self.bus.write_byte_data(self.address, _REG_INT_MAP, _INT_MAP_ALL_INT1)
+                self.bus.write_byte_data(
+                    self.address, _REG_INT_ENABLE, _INT_WATERMARK_BIT
+                )
             self.bus.write_byte_data(self.address, _REG_POWER_CTL, _POWER_MEASURE)
         except OSError as exc:
             raise SensorError(f"configuring 0x{self.address:02x}: {exc}") from exc
         self.rate_hz = rate
         self.range_g = range_g
+        self.watermark = watermark
 
     def set_offsets(self, x_g: float = 0.0, y_g: float = 0.0, z_g: float = 0.0) -> None:
         """Write the trim registers, in g. Applied by the part before the FIFO."""

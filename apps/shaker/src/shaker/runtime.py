@@ -52,6 +52,9 @@ async def run(config_path: Path = cfg_mod.DEFAULT_CONFIG_PATH) -> int:
         enabled=state.config.sensors.enabled,
         front_scale=state.config.sensors.front_scale,
         rear_scale=state.config.sensors.rear_scale,
+        watermark=state.config.sensors.int_watermark or None,
+        int_front_gpio=state.config.sensors.int_front_gpio,
+        int_rear_gpio=state.config.sensors.int_rear_gpio,
     )
     led = StatusLed(
         sensors,
