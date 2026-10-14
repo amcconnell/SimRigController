@@ -162,3 +162,24 @@ def test_interrupt_state_is_visible_in_status() -> None:
         assert "available" in s and "edges" in s
     finally:
         hub.stop()
+
+
+def test_the_watermark_is_reached_before_the_poll_would_drain_it() -> None:
+    """Otherwise the interrupt can never fire, and nothing says so.
+
+    The poll empties the FIFO on a timer. If the watermark needs more samples
+    than accumulate in that interval, the buffer is drained just before the
+    threshold every time: the part stays configured correctly, INT_SOURCE never
+    shows the watermark bit, and the only symptom is an edge count stuck at
+    zero. That was the first arrangement — watermark 16 at 800 Hz is 20 ms,
+    which was exactly the poll interval.
+    """
+    from shaker.sensors.adxl345 import INT_WATERMARK
+    from shaker.sensors.pods import _POLL_S
+
+    slowest_rate_hz = 800.0
+    fill_s = INT_WATERMARK / slowest_rate_hz
+    assert fill_s < _POLL_S * 0.75, (
+        f"watermark fills in {fill_s * 1000:.1f} ms against a {_POLL_S * 1000:.0f} ms "
+        "poll — the poll will drain it first and no interrupt will ever fire"
+    )

@@ -226,7 +226,7 @@ class SensorConfig:
     # board existed — and remains what happens anyway if an edge never
     # arrives, since the timer is a floor rather than a fallback of last
     # resort.
-    int_watermark: int = 16
+    int_watermark: int = 8
     int_front_gpio: int = 4
     int_rear_gpio: int = 17
 

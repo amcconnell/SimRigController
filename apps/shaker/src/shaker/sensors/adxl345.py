@@ -56,12 +56,19 @@ _FORMAT_FULL_RES = 0x08
 _FIFO_STREAM = 0x80    # mode bits 7:6 = 0b10
 _FIFO_SAMPLES = 31     # watermark only; stream mode keeps all 32 entries
 
-# Watermark used when the host wants an interrupt instead of a timer. Well
-# below the 31 above, which fires only once the FIFO is effectively full: at
-# 800 Hz that is 39 ms of buffer gone before anyone is told, leaving no margin
-# for a late reader. 16 samples is 20 ms, half the depth, which is the same
-# cadence the poll already ran at and leaves the other half as headroom.
-INT_WATERMARK = 16
+# Watermark used when the host wants an interrupt instead of a timer.
+#
+# It has to be reached *before* the poll would have drained the FIFO anyway,
+# or the interrupt can never fire. 16 was wrong for exactly that reason: at
+# 800 Hz it is 20 ms, the same as the poll interval, so the thread emptied the
+# buffer a moment before the threshold every time. The parts were configured
+# correctly and INT_SOURCE simply never showed the watermark bit.
+#
+# 8 samples is 10 ms, comfortably inside the 20 ms poll, and still a quarter of
+# the 32-deep buffer so a late reader has room. The cost is that the thread
+# wakes about twice as often — which is the honest price of interrupts here,
+# and part of why they buy latency rather than efficiency.
+INT_WATERMARK = 8
 
 _INT_WATERMARK_BIT = 0x02   # INT_ENABLE / INT_MAP bit 1
 _INT_MAP_ALL_INT1 = 0x00    # every enabled source to the INT1 pin
