@@ -491,6 +491,14 @@ wheels = [
 ]
 
 [[package]]
+name = "python-periphery"
+version = "2.4.3"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1e/77/2a3d51098a8f922adb1f77e661e3ee7a3b313ec21dd4b6c5e696bc9479a8/python_periphery-2.4.3-py2.py3-none-any.whl", hash = "sha256:9747c389b81543e728f816b6becc8467a540a4ae8db20ebeef9387e1d54939f9", size = 36444, upload-time = "2026-10-06T05:00:40.023Z" },
+]
+
+[[package]]
 name = "pyyaml"
 version = "6.0.3"
 source = { registry = "https://pypi.org/simple" }
@@ -578,6 +586,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "numpy" },
     { name = "pycryptodome" },
+    { name = "python-periphery" },
     { name = "smbus2" },
     { name = "sounddevice" },
     { name = "uvicorn", extra = ["standard"] },
@@ -595,6 +604,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
     { name = "numpy", specifier = ">=2.0" },
     { name = "pycryptodome", specifier = ">=3.20" },
+    { name = "python-periphery", specifier = ">=2.4" },
     { name = "smbus2", specifier = ">=0.4" },
     { name = "sounddevice", specifier = ">=0.5" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },

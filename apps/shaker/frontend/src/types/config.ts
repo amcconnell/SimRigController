@@ -265,11 +265,9 @@ export interface SensorStatus {
 }
 
 // Mirrors SystemStats.read() in system.py. Every field is optional — none of
-// these paths exist off a Pi. fan_duty_pct null means nothing is managing the
-// fan, which on the Argon case means it is running flat out, not stopped.
+// these paths exist off a Pi.
 export interface SystemStatus {
   cpu_temp_c: number | null;
-  fan_duty_pct: number | null;
   cpu_pct: number | null;
   load_1m: number | null;
   mem_used_mb: number | null;

@@ -1,4 +1,4 @@
-"""Host health: temperature, fan, CPU and memory.
+"""Host health: temperature, CPU and memory.
 
 Worth surfacing on a box doing real-time audio, because the failure it warns
 about is not a crash. A Pi that gets hot throttles its clock, and a throttled
@@ -11,9 +11,10 @@ dependencies. Everything is also optional: none of these paths exist on the
 Mac this is developed on, and a missing file is reported as None rather than
 allowed to fail a status request that also carries the telemetry.
 
-The fan duty comes from a file rather than the hardware because the Argon
-controller is write-only — it takes a byte and offers nothing back. Whoever set
-it is the only thing that knows, so the fan script publishes what it wrote.
+There was a fan reading here too, published by a script that drove the Argon
+case's controller. The case is gone — it was the heatsink as much as the fan,
+and losing it moved this Pi from the low 40s to the low 50s, still far below
+the 60 C where throttling starts to matter.
 """
 
 from __future__ import annotations
@@ -28,7 +29,6 @@ _TEMP_PATH = Path("/sys/class/thermal/thermal_zone0/temp")
 _STAT_PATH = Path("/proc/stat")
 _MEMINFO_PATH = Path("/proc/meminfo")
 _LOADAVG_PATH = Path("/proc/loadavg")
-FAN_STATE_PATH = Path("/run/simrig-fan-duty")
 
 # A Pi 4 begins reducing clock around 60 C and throttles hard near 80. The
 # first is where an audio callback starts being at risk, so that is where the
@@ -53,19 +53,13 @@ class SystemStats:
     someone is actually looking at rather than an average since boot.
     """
 
-    def __init__(self, fan_state_path: Path | None = None) -> None:
-        # Resolved at call time rather than bound here, so it behaves like
-        # the other paths in this module: a module-level constant that can
-        # be pointed elsewhere. A default argument would capture the value
-        # at import and silently ignore any later change.
-        self._fan_state_path = fan_state_path
+    def __init__(self) -> None:
         self._prev_busy: float | None = None
         self._prev_total: float | None = None
 
     def read(self) -> dict[str, Any]:
         return {
             "cpu_temp_c": self.cpu_temp_c(),
-            "fan_duty_pct": self.fan_duty_pct(),
             "cpu_pct": self.cpu_pct(),
             "load_1m": self.load_1m(),
             **self.memory(),
@@ -79,20 +73,6 @@ class SystemStats:
             return None
         try:
             return round(int(raw.strip()) / 1000.0, 1)
-        except ValueError:
-            return None
-
-    def fan_duty_pct(self) -> int | None:
-        """None means nothing is managing the fan, which is not the same as 0%.
-
-        On this hardware an unmanaged fan runs flat out, so reporting 0 would
-        be exactly backwards.
-        """
-        raw = _read(self._fan_state_path or FAN_STATE_PATH)
-        if raw is None:
-            return None
-        try:
-            return max(0, min(100, int(raw.strip())))
         except ValueError:
             return None
 

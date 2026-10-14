@@ -220,6 +220,28 @@ class SensorConfig:
     # wide. 1.0 means uncalibrated. Hot-applied — no restart.
     front_scale: float = 1.0
     rear_scale: float = 1.0
+    # FIFO depth at which a pod raises INT1, and the pins the breakout board
+    # routes those to. 0 for the watermark leaves interrupts off and the
+    # sampling thread purely on its timer, which is how this ran before the
+    # board existed — and remains what happens anyway if an edge never
+    # arrives, since the timer is a floor rather than a fallback of last
+    # resort.
+    int_watermark: int = 8
+    int_front_gpio: int = 4
+    int_rear_gpio: int = 17
+
+
+@dataclass(frozen=True)
+class LedConfig:
+    """Status LED on the breakout board.
+
+    Defaults to GPIO27 because that is where the pi-box board routes it. A rig
+    without the board leaves this enabled and simply never claims a pin — the
+    LED reports itself unavailable rather than failing anything.
+    """
+
+    enabled: bool = True
+    gpio: int = 27
 
 
 @dataclass(frozen=True)
@@ -228,6 +250,7 @@ class Config:
     web: WebConfig = field(default_factory=WebConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
     sensors: SensorConfig = field(default_factory=SensorConfig)
+    led: LedConfig = field(default_factory=LedConfig)
 
 
 # Fields whose change requires a full process restart (vs. hot-reload).
@@ -251,6 +274,17 @@ RESTART_REQUIRED_FIELDS: frozenset[str] = frozenset({
     "sensors.rear_address",
     "sensors.sample_rate_hz",
     "sensors.range_g",
+    # The watermark is written to the part when it is configured and the pins
+    # are claimed once at start, both of which happen before anything could
+    # hot-reload them.
+    "sensors.int_watermark",
+    "sensors.int_front_gpio",
+    "sensors.int_rear_gpio",
+    # The pin is claimed once, at startup, and held for the life of the
+    # process. Changing either of these under a running thread would leave it
+    # blinking a line it no longer owns.
+    "led.enabled",
+    "led.gpio",
     # Each vibration voice generates its bandpass noise buffer once, when it is
     # constructed, so a band edge changed under a running stream is read by
     # nothing. Without these entries the API returns 200, the config file and
@@ -300,24 +334,34 @@ def _known(section: type, raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def _from_dict(raw: dict[str, Any]) -> Config:
-    gt7_raw = dict(raw.get("gt7", {}))
-    if gt7_raw.get("ps5_ip") == "":
-        gt7_raw["ps5_ip"] = None
-    return Config(
-        gt7=GT7Config(**_known(GT7Config, gt7_raw)),
-        web=WebConfig(**_known(WebConfig, raw.get("web", {}))),
-        audio=AudioConfig(**_known(AudioConfig, raw.get("audio", {}))),
-        sensors=SensorConfig(**_known(SensorConfig, raw.get("sensors", {}))),
-    )
+    """Build a Config from parsed TOML, section by section off the dataclass.
+
+    Driven by fields(Config) rather than a written-out list, so a section added
+    later is read without anyone remembering to come back here. The list form
+    is how [sensors] came to be silently rebuilt from defaults on every profile
+    activation: nothing errored, nothing logged, the pods just went quiet.
+    """
+    sections: dict[str, Any] = {}
+    for f in fields(Config):
+        # Every section is declared `field(default_factory=<its class>)`, so the
+        # factory is the class. Reading the annotation instead would give a
+        # string, because this module uses postponed evaluation.
+        cls = f.default_factory  # type: ignore[misc]
+        section_raw = dict(raw.get(f.name, {}))
+        if cls is GT7Config and section_raw.get("ps5_ip") == "":
+            # An empty string in TOML means "discover it", which is None here.
+            section_raw["ps5_ip"] = None
+        sections[f.name] = cls(**_known(cls, section_raw))
+    return Config(**sections)
 
 
 def to_dict(cfg: Config) -> dict[str, Any]:
-    return {
-        "gt7": asdict(cfg.gt7),
-        "web": asdict(cfg.web),
-        "audio": asdict(cfg.audio),
-        "sensors": asdict(cfg.sensors),
-    }
+    """Every section, found off the dataclass rather than listed here.
+
+    save() writes exactly what this returns, so a section missing from the list
+    is a section silently dropped from the file the next time anything saves.
+    """
+    return {f.name: asdict(getattr(cfg, f.name)) for f in fields(Config)}
 
 
 def save(cfg: Config, path: Path = DEFAULT_CONFIG_PATH) -> None:

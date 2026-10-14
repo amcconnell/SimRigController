@@ -32,9 +32,9 @@ def fake_proc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 def test_everything_missing_reads_as_none_not_an_error() -> None:
     """The development Mac has none of these paths."""
-    s = SystemStats(fan_state_path=Path("/nonexistent/fan"))
+    s = SystemStats()
     got = s.read()
-    for key in ("cpu_temp_c", "fan_duty_pct", "cpu_pct", "load_1m",
+    for key in ("cpu_temp_c", "cpu_pct", "load_1m",
                 "mem_used_mb", "mem_total_mb", "mem_pct"):
         assert got[key] is None, key
 
@@ -47,21 +47,6 @@ def test_temperature_is_millidegrees(fake_proc) -> None:
 def test_garbage_temperature_is_none(fake_proc) -> None:
     fake_proc(temp="not a number\n")
     assert SystemStats().cpu_temp_c() is None
-
-
-def test_absent_fan_is_none_not_zero(tmp_path: Path) -> None:
-    """An unmanaged fan on this hardware runs flat out, so 0 would be backwards."""
-    assert SystemStats(fan_state_path=tmp_path / "missing").fan_duty_pct() is None
-
-
-def test_fan_duty_is_read_and_clamped(tmp_path: Path) -> None:
-    f = tmp_path / "fan"
-    f.write_text("35\n")
-    assert SystemStats(fan_state_path=f).fan_duty_pct() == 35
-    f.write_text("400\n")
-    assert SystemStats(fan_state_path=f).fan_duty_pct() == 100
-    f.write_text("junk")
-    assert SystemStats(fan_state_path=f).fan_duty_pct() is None
 
 
 def test_cpu_needs_two_samples_and_then_reports_a_rate(fake_proc) -> None:
@@ -123,16 +108,3 @@ def test_read_is_json_safe(fake_proc) -> None:
               loadavg="0.1 0.2 0.3 1/2 3\n")
     text = json.dumps(SystemStats().read())
     assert "Infinity" not in text and "NaN" not in text
-
-
-def test_fan_path_is_resolved_at_call_time(tmp_path: Path,
-                                           monkeypatch: pytest.MonkeyPatch) -> None:
-    """The default must follow the module constant, not a value bound at import.
-
-    create_app builds SystemStats with no argument, so anything pointing the
-    constant elsewhere — a test, a stub rig — has to be honoured.
-    """
-    f = tmp_path / "duty"
-    f.write_text("42\n")
-    monkeypatch.setattr(sysmod, "FAN_STATE_PATH", f)
-    assert SystemStats().fan_duty_pct() == 42
