@@ -21,12 +21,17 @@
       # Lands in /usr/sbin, which is not on a non-root PATH — call it by full
       # path rather than concluding it is missing.
       - i2c-tools
-      # Headers for building C extensions in the venv. The venv is built on the
-      # system interpreter (pyvenv.cfg home = /usr/bin), so lgpio — which ships
-      # as source, not a wheel — compiles against these. Without it uv sync
-      # fails on the Pi while succeeding everywhere a wheel exists, which is a
-      # confusing way to find out.
+      # Build chain for lgpio, which ships as source rather than a wheel and so
+      # is compiled in the venv on every Pi. It needs the Python headers (the
+      # venv is built on the system interpreter — pyvenv.cfg home = /usr/bin)
+      # and SWIG, which generates its wrapper before gcc sees anything. The
+      # library itself, liblgpio.so.1, arrives with the OS.
+      #
+      # Raspberry Pi OS already ships python3-lgpio as a package, so this is
+      # compiling something the machine has. The venv cannot see system
+      # site-packages and should not start, so the duplicate buys isolation.
       - python3-dev
+      - swig
     state: present
 
 # --- I2C for the accelerometer pods ----------------------------------------
